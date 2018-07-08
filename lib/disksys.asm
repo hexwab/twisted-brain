@@ -617,6 +617,10 @@ ENDIF
     DEY
     .loop
     LDA (readptr), Y
+    CMP #32
+    BNE notspace
+    LDA #13
+    .notspace
 IF _IGNORE_DIRECTORY
     STA osfile_filename, Y
 ELSE
