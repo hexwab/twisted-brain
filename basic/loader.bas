@@ -1,5 +1,5 @@
 10DEFFNO(A%,X%)=((USR&FFF4)AND&FF00)DIV256
-20C%=FNO(0,1):IF C%<3 ORC%>6:PRINT"Sorry, BBC Master required!":END
+20C%=FNO(0,1):IF C%<3 ORC%>5:PRINT"Sorry, BBC Master required!":END
 30IF FNO(68,0)<>15:PRINT"Sorry, need sideways RAM in banks 4-7."'"(Set LK18 and LK19 west?)":END
 40IFHIMEM<&7C00:MODE7
 50PRINT'"BITSHIFTERS are about to twist"
