@@ -670,11 +670,11 @@ INCLUDE "fx/sequence.asm"
 	EQUB 6		; fx_Smiley
 }
 
-.string_1 EQUS " 1..",0
-.string_2 EQUS " 2..",0
-.string_3 EQUS " 3..",0
-.string_4 EQUS " 4..",0
-.string_5 EQUS " 5..",0
+.string_1 EQUS " 1...",0
+.string_2 EQUS " 2...",0
+.string_3 EQUS " 3...",0
+.string_4 EQUS " 4...",0
+.string_5 EQUS " 5...",0
 
 \ ******************************************************************
 \ *	Shared data
