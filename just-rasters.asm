@@ -709,7 +709,9 @@ INCLUDE "fx/text_blocks.asm"
 \ *	Save the code
 \ ******************************************************************
 
-SAVE "Brain", start, end
+\ SAVE "Brain", start, end, start+&FFFF0000, start+&FFFF0000
+\ beebasm doesn't like 32-bit addresses; this is DFS-specific
+SAVE "Brain", start, end, start+&FF0000, start+&FF0000
 
 \ ******************************************************************
 \ *	Space reserved for runtime buffers not preinitialised
