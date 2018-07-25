@@ -257,6 +257,9 @@ INCBIN "data/smiley.pu"
 
 .smiley_draw
 {
+    LDA #&F4
+    STA &FE20
+    JSR ula_pal_reset
     \\ Wait until scanlne 8
     FOR n,1,8,1
     JSR cycles_wait_128
@@ -340,6 +343,12 @@ IF SMILEY_DEBUG_RASTERS
     STA &FE21
 ENDIF
 
+    LDX #<smiley_mode0_pal
+    LDY #>smiley_mode0_pal
+    JSR ula_set_palette
+    LDA #&9C
+    STA &FE20
+IF 0
     LDX #8
     .extra_loop
     BEQ extra_done
@@ -347,6 +356,7 @@ ENDIF
     DEX
     BRA extra_loop
     .extra_done
+ENDIF
 
 IF SMILEY_DEBUG_RASTERS
     LDA #PAL_green
@@ -397,5 +407,8 @@ NEXT
 FOR n,0,31,1
 EQUB HI((screen_base_addr + n * 640)/8)
 NEXT
+.smiley_mode0_pal
+	EQUD &07172737: EQUD &47576777
+	EQUD &8191A1B1: EQUD &C1D1E1F1
 
 .smiley_end
