@@ -194,25 +194,26 @@ GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
 	STA &FE4E					; R14=Interrupt Enable (enable main_vsync and timer interrupt)
 	CLI							; enable interupts
 
+	STZ first_fx ; initialise this before we start any decrunching
 	\\ Load SIDEWAYS RAM modules here
 
 	LDA #4:JSR swr_select_slot
 	LDA #HI(bank0_start)
 	LDX #LO(bank0_filename)
 	LDY #HI(bank0_filename)
-	JSR disksys_load_file
+	JSR disksys_load_crunched
 
 	LDA #5:JSR swr_select_slot
 	LDA #HI(bank1_start)
 	LDX #LO(bank1_filename)
 	LDY #HI(bank1_filename)
-	JSR disksys_load_file
+	JSR disksys_load_crunched
 
 	LDA #6:JSR swr_select_slot
 	LDA #HI(bank2_start)
 	LDX #LO(bank2_filename)
 	LDY #HI(bank2_filename)
-	JSR disksys_load_file
+	JSR disksys_load_crunched
 
 	LDA #SLOT_MUSIC:JSR swr_select_slot
 	LDA #HI(music_start)
@@ -236,7 +237,6 @@ GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
 	ENDIF
 
 	STZ main_new_fx
-	STZ first_fx
 	STZ delta_time
 	
 	\\ Initialise music player
@@ -743,7 +743,11 @@ INCLUDE "fx/picture.asm"
 
 .bank0_end
 
+IF SAVE_FILES
 SAVE "Bank0", bank0_start, bank0_end
+ELSE
+PUTFILE "bank0.pu", "Bank0", &8000
+ENDIF
 
 \ ******************************************************************
 \ *	BANK 0 Info
@@ -782,7 +786,11 @@ INCLUDE "fx/kefrens.asm"
 
 .bank1_end
 
+IF SAVE_FILES
 SAVE "Bank1", bank1_start, bank1_end
+ELSE
+PUTFILE "bank1.pu", "Bank1", &8000
+ENDIF
 
 \ ******************************************************************
 \ *	BANK 1 Info
@@ -824,7 +832,11 @@ INCLUDE "fx/plasma.asm"
 
 .bank2_end
 
+IF SAVE_FILES
 SAVE "Bank2", bank2_start, bank2_end
+ELSE
+PUTFILE "bank2.pu", "Bank2", &8000
+ENDIF
 
 \ ******************************************************************
 \ *	BANK 2 Info
@@ -867,8 +879,13 @@ INCBIN "audio/music/dropsmiley-timed.raw.exo"
 
 .music_end
 
+IF 1
 SAVE "Music", music_start, HAZEL_START
 SAVE "Hazel", HAZEL_START, music_end
+ELSE
+PUTFILE "music.pu", "Music", &8000
+PUTFILE "hazel.pu", "Hazel", &C000
+ENDIF
 
 \ ******************************************************************
 \ *	MUSIC INFO

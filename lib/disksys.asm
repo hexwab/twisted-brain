@@ -21,19 +21,8 @@ EQUD 0
 ; end address of attributes
 .osfile_endaddr
 EQUD 0
-
-;--------------------------------------------------------------
-; Load a file from disk to memory (SWR supported)
-; Loads in sector granularity so will always write to page aligned address
-;--------------------------------------------------------------
-; A=memory address MSB (page aligned)
-; X=filename address LSB
-; Y=filename address MSB
-
-.disksys_load_file
 {
-    STA write_to+2
-
+.disksys_load_helper
     \ Load to screen if can't load direct
     LDA #HI(disksys_loadto_addr)
     STA osfile_loadaddr+1
@@ -55,7 +44,21 @@ EQUD 0
     LDX #LO(osfile_params)
     LDY #HI(osfile_params)
     LDA #&FF
-    JSR osfile
+    JMP osfile
+.loadstr
+	EQUS "...6 "
+
+;--------------------------------------------------------------
+; Load a file from disk to memory (SWR supported)
+; Loads in sector granularity so will always write to page aligned address
+;--------------------------------------------------------------
+; A=memory address MSB (page aligned)
+; X=filename address LSB
+; Y=filename address MSB
+
+.*disksys_load_file
+    STA write_to+2
+    JSR disksys_load_helper
 
     \ Get filesize 
     LDY osfile_length+1
@@ -77,8 +80,14 @@ EQUD 0
     DEY
     BNE read_from
     RTS
-.loadstr
-	EQUS "...6 "
+
+.*disksys_load_crunched
+    PHA
+    JSR disksys_load_helper
+    LDX #LO(disksys_loadto_addr)
+    LDY #HI(disksys_loadto_addr)
+    PLA
 }
+; fall-through to uncrunch routine
 
 .beeb_disksys_end
