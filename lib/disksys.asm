@@ -42,6 +42,15 @@ EQUD 0
     STX osfile_nameaddr
     STY osfile_nameaddr+1
 
+.print_loading_string
+	DEC loadstr+3
+	LDX #4
+	.loop
+	LDA loadstr,X
+	JSR oswrch
+	DEX
+	BPL loop
+
     \ Ask OSFILE to load our file
     LDX #LO(osfile_params)
     LDY #HI(osfile_params)
@@ -67,17 +76,7 @@ EQUD 0
     INC write_to+2
     DEY
     BNE read_from
-}
-.print_loading_string
-{
-	DEC loadstr+3
-	LDX #4
-	.loop
-	LDA loadstr,X
-	JSR oswrch
-	DEX
-	BPL loop
-	RTS
+    RTS
 .loadstr
 	EQUS "...6 "
 }
