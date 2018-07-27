@@ -627,11 +627,11 @@ INCLUDE "fx/sequence.asm"
 
 .data_start
 
-.bank0_filename EQUS "Bank0  $"
-.bank1_filename EQUS "Bank1  $"
-.bank2_filename EQUS "Bank2  $"
-.music_filename EQUS "Music  $"
-.hazel_filename EQUS "Hazel  $"
+.bank0_filename EQUS "Bank0":EQUB 13
+.bank1_filename EQUS "Bank1":EQUB 13
+.bank2_filename EQUS "Bank2":EQUB 13
+.music_filename EQUS "Music":EQUB 13
+.hazel_filename EQUS "Hazel":EQUB 13
 
 .main_fx_table
 {
