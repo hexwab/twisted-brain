@@ -68,6 +68,18 @@ EQUD 0
     DEY
     BNE read_from
 }
-    RTS
+.print_loading_string
+{
+	DEC loadstr+3
+	LDX #4
+	.loop
+	LDA loadstr,X
+	JSR oswrch
+	DEX
+	BPL loop
+	RTS
+.loadstr
+	EQUS "...6 "
+}
 
 .beeb_disksys_end

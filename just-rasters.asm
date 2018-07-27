@@ -57,12 +57,6 @@ MACRO SCREEN_ADDR_HI row
 	EQUB HI((screen_base_addr + row*640) DIV 8)
 ENDMACRO
 
-MACRO MPRINT string
-{
-    LDX #LO(string):LDY #HI(string):JSR print_XY
-}
-ENDMACRO
-
 \ ******************************************************************
 \ *	DEMO defines
 \ ******************************************************************
@@ -202,15 +196,11 @@ GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
 
 	\\ Load SIDEWAYS RAM modules here
 
-	MPRINT string_5
-
 	LDA #4:JSR swr_select_slot
 	LDA #HI(bank0_start)
 	LDX #LO(bank0_filename)
 	LDY #HI(bank0_filename)
 	JSR disksys_load_file
-
-	MPRINT string_4
 
 	LDA #5:JSR swr_select_slot
 	LDA #HI(bank1_start)
@@ -218,23 +208,17 @@ GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
 	LDY #HI(bank1_filename)
 	JSR disksys_load_file
 
-	MPRINT string_3
-
 	LDA #6:JSR swr_select_slot
 	LDA #HI(bank2_start)
 	LDX #LO(bank2_filename)
 	LDY #HI(bank2_filename)
 	JSR disksys_load_file
 
-	MPRINT string_2
-
 	LDA #SLOT_MUSIC:JSR swr_select_slot
 	LDA #HI(music_start)
 	LDX #LO(music_filename)
 	LDY #HI(music_filename)
 	JSR disksys_load_file
-
-	MPRINT string_1
 
 	LDA #HI(HAZEL_START)
 	LDX #LO(hazel_filename)
@@ -610,7 +594,6 @@ INCLUDE "lib/exomiser.asm"
 INCLUDE "lib/disksys.asm"
 INCLUDE "lib/unpack.asm"
 INCLUDE "lib/swr.asm"
-INCLUDE "lib/print.asm"
 INCLUDE "lib/script.asm"
 
 \ ******************************************************************
@@ -670,12 +653,6 @@ INCLUDE "fx/sequence.asm"
 	EQUB 6		; fx_Smiley
 }
 
-.string_1 EQUS " 1...",0
-.string_2 EQUS " 2...",0
-.string_3 EQUS " 3...",0
-.string_4 EQUS " 4...",0
-.string_5 EQUS " 5...",0
-
 \ ******************************************************************
 \ *	Shared data
 \ ******************************************************************
@@ -733,7 +710,6 @@ PRINT "EXOMISER size =", ~exo_end-exo_start
 PRINT "DISKSYS size =", ~beeb_disksys_end-beeb_disksys_start
 PRINT "PUCRUNCH size =", ~pucrunch_end-pucrunch_start
 PRINT "SWR size =",~beeb_swr_end-beeb_swr_start
-PRINT "PRINT size =",~beeb_print_end-beeb_print_start
 PRINT "SCRIPT size =",~script_end-script_start
 PRINT "------"
 PRINT "HELPERS size =",~helpers_end-helpers_start
