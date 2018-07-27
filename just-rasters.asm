@@ -680,7 +680,7 @@ INCLUDE "fx/sequence.asm"
 \ *	Shared data
 \ ******************************************************************
 
-PAGE_ALIGN
+ALIGN &20 ; we don't need full page alignment here
 .picture_screen_addr_LO
 FOR n,0,31,1
 EQUB LO(screen_base_addr + n * 640)
