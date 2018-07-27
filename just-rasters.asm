@@ -29,7 +29,7 @@ ENDMACRO
 MACRO SET_ULA_MODE ula_mode
 {
 	LDA #ula_mode
-    STA &FE20:STA &248
+    STA &FE20
 }
 ENDMACRO
 

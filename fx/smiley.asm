@@ -257,8 +257,7 @@ INCBIN "data/smiley.pu"
 
 .smiley_draw
 {
-    LDA #&F4
-    STA &FE20
+    SET_ULA_MODE ULA_Mode2
     JSR ula_pal_reset
     \\ Wait until scanlne 8
     FOR n,1,8,1
@@ -346,8 +345,7 @@ ENDIF
     LDX #<smiley_mode0_pal
     LDY #>smiley_mode0_pal
     JSR ula_set_palette
-    LDA #&9C
-    STA &FE20
+    SET_ULA_MODE ULA_Mode0
 IF 0
     LDX #8
     .extra_loop
