@@ -7,6 +7,23 @@ logo_bottom_scanline = locals_start + 1
 logo_scroll = locals_start + 2
 logo_speed = locals_start + 3
 
+narrow_screen_base_addr = &3000 - 40
+NARROW_CHARS = 61 ; 6845 chars
+
+MACRO SCREEN_ADDR_ROW_NARROW row
+	EQUW ((narrow_screen_base_addr + row*NARROW_CHARS*8) DIV 8)
+ENDMACRO
+
+MACRO SCREEN_ADDR_LO_NARROW row
+	EQUB LO((narrow_screen_base_addr + row*NARROW_CHARS*8) DIV 8)
+ENDMACRO
+
+MACRO SCREEN_ADDR_HI_NARROW row
+	EQUB HI((narrow_screen_base_addr + row*NARROW_CHARS*8) DIV 8)
+ENDMACRO
+
+BLANK = 25
+
 .logo_start
 
 .logo_init
@@ -16,12 +33,25 @@ logo_speed = locals_start + 3
     LDA #HI(screen_base_addr)
     JSR PUCRUNCH_UNPACK
 
-    SET_ULA_MODE ULA_Mode1
+    LDX #0
+    .loop
+    STZ &2F00,X
+    ;STZ &DF00,X ; if we ever end up using shadow RAM
+    INX
+    BNE loop
+
+    SET_ULA_MODE ULA_Mode0
 	LDX #LO(logo_pal)
 	LDY #HI(logo_pal)
 	JSR ula_set_palette
 
 	STZ logo_scroll
+
+	\\ R9=1 - displayed chars
+	LDA #1: STA &FE00
+	LDA #NARROW_CHARS: STA &FE01
+	LDA #2: STA &FE00
+	LDA #89: STA &FE01
 
 	LDA #0
 	JSR logo_set_anim
@@ -167,22 +197,25 @@ logo_speed = locals_start + 3
 	JSR crtc_reset_from_single
     SET_ULA_MODE ULA_Mode2
     JMP ula_pal_reset
+    \\ reset to 80 chars
+	LDA #1: STA &FE00
+	LDA #80: STA &FE01
+	LDA #2: STA &FE00
+	LDA #98: STA &FE01
 }
 
 .logo_set_white
 {
-	TXA								; 2c
-	LSR A:LSR A:LSR A:LSR A:LSR A:LSR A	; 10c
-	TAY								; 2c
-	LDA logo_colour, Y				; 4c
-	ORA #&A0:STA &FE21				; 6c
-	LDA logo_colour, Y				; 4c
-	ORA #&B0:STA &FE21				; 6c
-	LDA logo_colour, Y				; 4c
-	ORA #&E0:STA &FE21				; 6c
-	LDA logo_colour, Y				; 4c
-	ORA #&F0:STA &FE21				; 6c
-
+	LDA logo_colour, X				; 4c
+	ORA #&80:STA &FE21				; 6c
+	ORA #&10:STA &FE21				; 6c
+	ORA #&20:STA &FE21				; 6c
+	AND #&EF:STA &FE21				; 6c
+	ORA #&40:STA &FE21				; 6c
+	ORA #&10:STA &FE21				; 6c
+	AND #&DF:STA &FE21				; 6c
+	AND #&EF:STA &FE21				; 6c
+	NOP:NOP
 }	\\ Total time = 12c + 14c + 40c = 66c
 \\ Fall through!
 .logo_set_charrow
@@ -192,13 +225,13 @@ logo_speed = locals_start + 3
 	CLC							; 2c
 
 	LDA #13: STA &FE00				; 6c
-    LDA logo_default_LO, X			; 4c
+	LDA logo_default_LO, X			; 4c
 	ADC logo_scanline_offset_LO, Y				; 4c
 	STA &FE01						; 4c
 
 	\\ Set screen row to this
    	LDA #12: STA &FE00				; 6c
-    LDA logo_default_HI, X			; 4c
+	LDA logo_default_HI, X			; 4c
 	ADC logo_scanline_offset_HI, Y				; 4c
 	STA &FE01						; 4c
 
@@ -233,53 +266,112 @@ ENDIF
 {
 	EQUB &00 + PAL_black
 	EQUB &10 + PAL_black
-	EQUB &20 + PAL_red
-	EQUB &30 + PAL_red
+	EQUB &20 + PAL_black
+	EQUB &30 + PAL_black
 	EQUB &40 + PAL_black
 	EQUB &50 + PAL_black
-	EQUB &60 + PAL_red
-	EQUB &70 + PAL_red
-	EQUB &80 + PAL_yellow
-	EQUB &90 + PAL_yellow
+	EQUB &60 + PAL_black
+	EQUB &70 + PAL_black
+	EQUB &80 + PAL_white
+	EQUB &90 + PAL_white
 	EQUB &A0 + PAL_white
 	EQUB &B0 + PAL_white
-	EQUB &C0 + PAL_yellow
-	EQUB &D0 + PAL_yellow
+	EQUB &C0 + PAL_white
+	EQUB &D0 + PAL_white
 	EQUB &E0 + PAL_white
 	EQUB &F0 + PAL_white
-}
-
-.logo_colour
-{
-	EQUB PAL_red
-	EQUB PAL_green
-	EQUB PAL_yellow
-	EQUB PAL_blue
 }
 
 .logo_screen_data
 INCBIN "data/shift.pu"
 
 PAGE_ALIGN
+.logo_colour
+{
+FOR n,0,63,1
+	EQUB PAL_red
+NEXT
+FOR n,0,63,1
+	EQUB PAL_green
+NEXT
+FOR n,0,63,1
+	EQUB PAL_yellow
+NEXT
+FOR n,0,63,1
+	EQUB PAL_blue
+NEXT
+}
+
 .logo_default_LO
 {
 FOR a,0,3,1
 	FOR n,1,7,1
-	SCREEN_ADDR_LO 15		; blank
+	SCREEN_ADDR_LO_NARROW BLANK
 	NEXT
 
-	\\ Separated teletext look
-	FOR n,0,14,1
-	SCREEN_ADDR_LO n
-	SCREEN_ADDR_LO n
+	SCREEN_ADDR_LO_NARROW 0
+	SCREEN_ADDR_LO_NARROW 0
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 0
+	SCREEN_ADDR_LO_NARROW 0
+	SCREEN_ADDR_LO_NARROW 0
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 1
+	SCREEN_ADDR_LO_NARROW 1
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 2
+	SCREEN_ADDR_LO_NARROW 2
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 3
+	SCREEN_ADDR_LO_NARROW 3
+	SCREEN_ADDR_LO_NARROW 3
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 4
+	SCREEN_ADDR_LO_NARROW 4
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 5
+	SCREEN_ADDR_LO_NARROW 5
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 6
+	SCREEN_ADDR_LO_NARROW 6
+	SCREEN_ADDR_LO_NARROW 6
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 7
+	SCREEN_ADDR_LO_NARROW 7
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 7
+	SCREEN_ADDR_LO_NARROW 7
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 8
+	SCREEN_ADDR_LO_NARROW 8
+	SCREEN_ADDR_LO_NARROW 8
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 9
+	SCREEN_ADDR_LO_NARROW 9
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 9
+	SCREEN_ADDR_LO_NARROW 9
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 10
+	SCREEN_ADDR_LO_NARROW 10
+	SCREEN_ADDR_LO_NARROW 10
+	SCREEN_ADDR_LO_NARROW BLANK
+	SCREEN_ADDR_LO_NARROW 11
+	SCREEN_ADDR_LO_NARROW 11
+	SCREEN_ADDR_LO_NARROW 11
+
+IF 0
+	FOR n,1,7,1
+	SCREEN_ADDR_LO_NARROW n
+	SCREEN_ADDR_LO_NARROW n
 	IF n MOD 3 = 1
-	SCREEN_ADDR_LO n
+	SCREEN_ADDR_LO_NARROW n
 	ENDIF
-	SCREEN_ADDR_LO 15		; blank
 	NEXT
+ENDIF
 
 	FOR n,1,7,1
-	SCREEN_ADDR_LO 15		; blank
+	SCREEN_ADDR_LO_NARROW BLANK
 	NEXT
 NEXT
 }
@@ -288,21 +380,72 @@ NEXT
 {
 FOR a,0,3,1
 	FOR n,1,7,1
-	SCREEN_ADDR_HI 15		; blank
+	SCREEN_ADDR_HI_NARROW BLANK
 	NEXT
 
-	\\ Separated teletext look
-	FOR n,0,14,1
-	SCREEN_ADDR_HI n
-	SCREEN_ADDR_HI n
+	SCREEN_ADDR_HI_NARROW 0
+	SCREEN_ADDR_HI_NARROW 0
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 0
+	SCREEN_ADDR_HI_NARROW 0
+	SCREEN_ADDR_HI_NARROW 0
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 1
+	SCREEN_ADDR_HI_NARROW 1
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 2
+	SCREEN_ADDR_HI_NARROW 2
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 3
+	SCREEN_ADDR_HI_NARROW 3
+	SCREEN_ADDR_HI_NARROW 3
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 4
+	SCREEN_ADDR_HI_NARROW 4
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 5
+	SCREEN_ADDR_HI_NARROW 5
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 6
+	SCREEN_ADDR_HI_NARROW 6
+	SCREEN_ADDR_HI_NARROW 6
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 7
+	SCREEN_ADDR_HI_NARROW 7
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 7
+	SCREEN_ADDR_HI_NARROW 7
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 8
+	SCREEN_ADDR_HI_NARROW 8
+	SCREEN_ADDR_HI_NARROW 8
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 9
+	SCREEN_ADDR_HI_NARROW 9
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 9
+	SCREEN_ADDR_HI_NARROW 9
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 10
+	SCREEN_ADDR_HI_NARROW 10
+	SCREEN_ADDR_HI_NARROW 10
+	SCREEN_ADDR_HI_NARROW BLANK
+	SCREEN_ADDR_HI_NARROW 11
+	SCREEN_ADDR_HI_NARROW 11
+	SCREEN_ADDR_HI_NARROW 11
+
+IF 0
+	FOR n,1,7,1
+	SCREEN_ADDR_HI_NARROW n
+	SCREEN_ADDR_HI_NARROW n
 	IF n MOD 3 = 1
-	SCREEN_ADDR_HI n
+	SCREEN_ADDR_HI_NARROW n
 	ENDIF
-	SCREEN_ADDR_HI 15		; blank
 	NEXT
+ENDIF
 
 	FOR n,1,7,1
-	SCREEN_ADDR_HI 15		; blank
+	SCREEN_ADDR_HI_NARROW BLANK
 	NEXT
 NEXT
 }
@@ -314,61 +457,62 @@ NEXT
 	NEXT
 }
 
+OFFSET1 = NARROW_CHARS * 12
+smoothsize = 64
+
 .logo_sinewave_LO
 {
 	FOR n,0,255,1
+	IF 0
+	IF (n < smoothsize)
+	   smoothstep = 3*(n/smoothsize)*(n/smoothsize)-2*(n/smoothsize)*(n/smoothsize)*(n/smoothsize)
+	ELSE
+	   IF (n > 255-smoothsize)
+	       smoothstep = 3*((255-n)/smoothsize)*((255-n)/smoothsize)-2*((255-n)/smoothsize)*((255-n)/smoothsize)*((255-n)/smoothsize)
+	   ELSE
+	       smoothstep = 1
+	   ENDIF
+	ENDIF
+	x = INT(10 * SIN(4 * PI * n / 256) * smoothstep)
+	ELSE
 	x = INT(10 * SIN(4 * PI * n / 256))
+	ENDIF
 	IF (x AND 1) = 1
 		IF x < 0
-		a = &500 - ((x-1) DIV 2)
+		a = OFFSET1 - ((x-1) DIV 2)
 		ELSE
-		a = &500 - (x DIV 2)
+		a = OFFSET1 - (x DIV 2)
 		ENDIF
 	ELSE
 	a = -(x DIV 2)
 	ENDIF
 	EQUB LO(a)
 	NEXT
-
-	FOR n,0,255,1
-	x = INT(20 * SIN(2 * PI * n / 256))
-	IF (x AND 1) = 1
-		IF x < 0
-		a = &500 - ((x-1) DIV 2)
-		ELSE
-		a = &500 - (x DIV 2)
-		ENDIF
-	ELSE
-	a = -(x DIV 2)
-	ENDIF
-	EQUB LO(a)
-	NEXT	
 }
 
 .logo_sinewave_HI
 {
 	FOR n,0,255,1
-	x = INT(10 * SIN(4 * PI * n / 256))
-	IF (x AND 1) = 1
-		IF x < 0
-		a = &500 - ((x-1) DIV 2)
-		ELSE
-		a = &500 - (x DIV 2)
-		ENDIF
+	IF 0
+	IF (n < smoothsize)
+	   smoothstep = 3*(n/smoothsize)*(n/smoothsize)-2*(n/smoothsize)*(n/smoothsize)*(n/smoothsize)
 	ELSE
-	a = -(x DIV 2)
+ 	   IF (n > 255-smoothsize)
+	       smoothstep = 3*((255-n)/smoothsize)*((255-n)/smoothsize)-2*((255-n)/smoothsize)*((255-n)/smoothsize)*((255-n)/smoothsize)
+	   ELSE
+	       smoothstep = 1
+	   ENDIF
 	ENDIF
-	PRINT "x=",x," a=",~a
-	EQUB HI(a)
-	NEXT
-
-	FOR n,0,255,1
-	x = INT(20 * SIN(2 * PI * n / 256))
+	PRINT "smoothstep=",smoothstep
+	x = INT(10 * SIN(4 * PI * n / 256) * smoothstep)
+	ELSE
+	x = INT(10 * SIN(4 * PI * n / 256))
+	ENDIF
 	IF (x AND 1) = 1
 		IF x < 0
-		a = &500 - ((x-1) DIV 2)
+		a = OFFSET1 - ((x-1) DIV 2)
 		ELSE
-		a = &500 - (x DIV 2)
+		a = OFFSET1 - (x DIV 2)
 		ENDIF
 	ELSE
 	a = -(x DIV 2)
