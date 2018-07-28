@@ -29,7 +29,7 @@ ENDMACRO
 MACRO SET_ULA_MODE ula_mode
 {
 	LDA #ula_mode
-    STA &FE20:STA &248
+    STA &FE20
 }
 ENDMACRO
 
@@ -55,12 +55,6 @@ ENDMACRO
 
 MACRO SCREEN_ADDR_HI row
 	EQUB HI((screen_base_addr + row*640) DIV 8)
-ENDMACRO
-
-MACRO MPRINT string
-{
-    LDX #LO(string):LDY #HI(string):JSR print_XY
-}
 ENDMACRO
 
 \ ******************************************************************
@@ -200,41 +194,32 @@ GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
 	STA &FE4E					; R14=Interrupt Enable (enable main_vsync and timer interrupt)
 	CLI							; enable interupts
 
+	STZ first_fx ; initialise this before we start any decrunching
 	\\ Load SIDEWAYS RAM modules here
-
-	MPRINT string_5
 
 	LDA #4:JSR swr_select_slot
 	LDA #HI(bank0_start)
 	LDX #LO(bank0_filename)
 	LDY #HI(bank0_filename)
-	JSR disksys_load_file
-
-	MPRINT string_4
+	JSR disksys_load_crunched
 
 	LDA #5:JSR swr_select_slot
 	LDA #HI(bank1_start)
 	LDX #LO(bank1_filename)
 	LDY #HI(bank1_filename)
-	JSR disksys_load_file
-
-	MPRINT string_3
+	JSR disksys_load_crunched
 
 	LDA #6:JSR swr_select_slot
 	LDA #HI(bank2_start)
 	LDX #LO(bank2_filename)
 	LDY #HI(bank2_filename)
-	JSR disksys_load_file
-
-	MPRINT string_2
+	JSR disksys_load_crunched
 
 	LDA #SLOT_MUSIC:JSR swr_select_slot
 	LDA #HI(music_start)
 	LDX #LO(music_filename)
 	LDY #HI(music_filename)
 	JSR disksys_load_file
-
-	MPRINT string_1
 
 	LDA #HI(HAZEL_START)
 	LDX #LO(hazel_filename)
@@ -252,7 +237,6 @@ GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
 	ENDIF
 
 	STZ main_new_fx
-	STZ first_fx
 	STZ delta_time
 	
 	\\ Initialise music player
@@ -610,7 +594,6 @@ INCLUDE "lib/exomiser.asm"
 INCLUDE "lib/disksys.asm"
 INCLUDE "lib/unpack.asm"
 INCLUDE "lib/swr.asm"
-INCLUDE "lib/print.asm"
 INCLUDE "lib/script.asm"
 
 \ ******************************************************************
@@ -627,11 +610,11 @@ INCLUDE "fx/sequence.asm"
 
 .data_start
 
-.bank0_filename EQUS "Bank0  $"
-.bank1_filename EQUS "Bank1  $"
-.bank2_filename EQUS "Bank2  $"
-.music_filename EQUS "Music  $"
-.hazel_filename EQUS "Hazel  $"
+.bank0_filename EQUS "Bank0":EQUB 13
+.bank1_filename EQUS "Bank1":EQUB 13
+.bank2_filename EQUS "Bank2":EQUB 13
+.music_filename EQUS "Music":EQUB 13
+.hazel_filename EQUS "Hazel":EQUB 13
 
 .main_fx_table
 {
@@ -670,17 +653,11 @@ INCLUDE "fx/sequence.asm"
 	EQUB 6		; fx_Smiley
 }
 
-.string_1 EQUS " 1..",0
-.string_2 EQUS " 2..",0
-.string_3 EQUS " 3..",0
-.string_4 EQUS " 4..",0
-.string_5 EQUS " 5..",0
-
 \ ******************************************************************
 \ *	Shared data
 \ ******************************************************************
 
-PAGE_ALIGN
+ALIGN &20 ; we don't need full page alignment here
 .picture_screen_addr_LO
 FOR n,0,31,1
 EQUB LO(screen_base_addr + n * 640)
@@ -709,7 +686,9 @@ INCLUDE "fx/text_blocks.asm"
 \ *	Save the code
 \ ******************************************************************
 
-SAVE "Brain", start, end
+\ SAVE "Brain", start, end, start+&FFFF0000, start+&FFFF0000
+\ beebasm doesn't like 32-bit addresses; this is DFS-specific
+SAVE "Brain", start, end, start+&FF0000, start+&FF0000
 
 \ ******************************************************************
 \ *	Space reserved for runtime buffers not preinitialised
@@ -731,7 +710,6 @@ PRINT "EXOMISER size =", ~exo_end-exo_start
 PRINT "DISKSYS size =", ~beeb_disksys_end-beeb_disksys_start
 PRINT "PUCRUNCH size =", ~pucrunch_end-pucrunch_start
 PRINT "SWR size =",~beeb_swr_end-beeb_swr_start
-PRINT "PRINT size =",~beeb_print_end-beeb_print_start
 PRINT "SCRIPT size =",~script_end-script_start
 PRINT "------"
 PRINT "HELPERS size =",~helpers_end-helpers_start
@@ -765,7 +743,11 @@ INCLUDE "fx/picture.asm"
 
 .bank0_end
 
+IF SAVE_FILES
 SAVE "Bank0", bank0_start, bank0_end
+ELSE
+PUTFILE "bank0.pu", "Bank0", &8000
+ENDIF
 
 \ ******************************************************************
 \ *	BANK 0 Info
@@ -804,7 +786,11 @@ INCLUDE "fx/kefrens.asm"
 
 .bank1_end
 
+IF SAVE_FILES
 SAVE "Bank1", bank1_start, bank1_end
+ELSE
+PUTFILE "bank1.pu", "Bank1", &8000
+ENDIF
 
 \ ******************************************************************
 \ *	BANK 1 Info
@@ -846,7 +832,11 @@ INCLUDE "fx/plasma.asm"
 
 .bank2_end
 
+IF SAVE_FILES
 SAVE "Bank2", bank2_start, bank2_end
+ELSE
+PUTFILE "bank2.pu", "Bank2", &8000
+ENDIF
 
 \ ******************************************************************
 \ *	BANK 2 Info
@@ -889,8 +879,13 @@ INCBIN "audio/music/dropsmiley-timed.raw.exo"
 
 .music_end
 
+IF 1
 SAVE "Music", music_start, HAZEL_START
 SAVE "Hazel", HAZEL_START, music_end
+ELSE
+PUTFILE "music.pu", "Music", &8000
+PUTFILE "hazel.pu", "Hazel", &C000
+ENDIF
 
 \ ******************************************************************
 \ *	MUSIC INFO
@@ -922,8 +917,9 @@ IF _DEBUG
 ;PUTBASIC "basic/parallax mode1.bas", "para1"
 ;PUTFILE "basic/makdith.bas.bin", "MAKDITH", &0E00
 ;PUTFILE "basic/makdith2.bas.bin", "MAKDIT2", &0E00
-;PUTFILE "basic/makshif.bas.bin", "MAKSHIF", &E000
-;PUTFILE "data/bsmode1.bin", "LOGO", &3000
+PUTFILE "basic/makshif.bas.bin", "MAKSHIF", &E000
+PUTFILE "data/bsmode1.bin", "LOGO", &3000
+PUTBASIC "basic/makshf2.bas", "MAKSHF2"
 PUTBASIC "basic/twist.bas", "MTWIST"
 ;PUTFILE "data/nova-mode1.bin", "NOVA", &3000
 ;PUTFILE "data/brain-mode2.bin", "BRAIN", &3000

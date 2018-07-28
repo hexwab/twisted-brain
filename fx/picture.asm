@@ -54,10 +54,25 @@ INCBIN "data/brain-mask.pu"
 	\ Ensure MAIN RAM is writeable
     LDA &FE34:AND #&FB:STA &FE34
 
-	LDX #LO(picture_pu_data)
-	LDY #HI(picture_pu_data)
-    LDA #HI(screen_base_addr)
+    LDX #LO(picture_pu_data)
+    LDY #HI(picture_pu_data)
+    LDA #HI(screen_base_addr+&D00)
     JSR PUCRUNCH_UNPACK
+    JSR music_poll_if_vsync
+    LDX #0
+    LDA #&C0
+.c0loop
+    STA &3000,X:STA &3100,X:STA &3200,X
+    STA &3300,X:STA &3400,X:STA &3500,X
+    STA &3600,X:STA &3700,X:STA &3800,X
+    STA &3900,X:STA &3A00,X:STA &3B00,X
+    STA &3C00,X:STA &7300,X:STA &7400,X
+    STA &7500,X:STA &7600,X:STA &7700,X
+    STA &7800,X:STA &7900,X:STA &7A00,X
+    STA &7B00,X:STA &7C00,X:STA &7D00,X
+    STA &7E00,X:STA &7F00,X
+    INX
+    BNE c0loop
 
     STZ picture_y
     STZ picture_anim
