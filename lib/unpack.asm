@@ -268,9 +268,10 @@ INPOS = *+1
 OUTPOS = *+1		; ZP
 .putch:	sta &aaaa	; ** parameter
 	inc OUTPOS	; ZP
-	bne s0b
-	inc OUTPOS+1	; ZP
-.s0b:	rts
+	beq s0b
+	rts
+.s0b:	inc OUTPOS+1	; ZP
+	rts
 
 }
 
