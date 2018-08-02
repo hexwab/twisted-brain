@@ -25,21 +25,134 @@ ENDMACRO
 BLANK = 25
 
 .logo_start
+unpack_buffer = &E00
+	;; pack/unpack 8-byte-aligned bytes from 8 pages to/from 1
+	;; page. packed format is undefined
 
+.copypagetopacked
+{
+	STX srcloc+2
+	STY dstloc+2
+	LDY #0
+.loop
+	LDX mul8,Y
+.srcloc
+	LDA $FF00,X
+.dstloc
+	STA $FF00,Y
+	INY
+	TXA
+	BNE loop
+.zero
+	INC srcloc+2
+	TYA
+	BNE loop
+	RTS
+}
+.restorepagefrompacked
+{
+	STX srcloc+2
+	STY dstloc+2
+	LDY #0
+.loop
+	LDX mul8,Y
+.srcloc
+	LDA $FF00,Y
+.dstloc
+	STA $FF00,X
+	INY
+	TXA
+	BNE loop
+.zero
+	INC dstloc+2
+	TYA
+	BNE loop
+	RTS
+}
+.copyandshiftlines
+{
+	;; X is src line number, Y is dst line number, A is nlines
+	STA temp
+.linesloop
+	LDA linelocslo,X
+	STA srcloc+1
+	LDA linelocshi,X
+	STA srcloc+2
+	LDA linelocslo,Y
+	STA dstloc+1
+	LDA linelocshi,Y
+	STA dstloc+2
+	PHX
+	PHY
+	JSR copyandshiftline
+	PLY
+	PLX
+	INX
+	INY
+	DEC temp
+	BNE linesloop
+	RTS
+
+.copyandshiftline
+	CLC
+	LDY #<mul8
+	STY loop+1
+	LDY #31
+	JSR loop
+	INC srcloc+2
+	INC dstloc+2
+	LDY #<mul8+3
+	STY loop+1
+	LDY #28
+.loop
+	LDX mul8,Y
+.srcloc
+	LDA $FF00,X
+	ROR A
+.dstloc
+	STA $FF00,X
+	DEY
+	BPL loop
+	RTS
+}
+PAGE_ALIGN ;FIXME: why is this needed?
 .logo_init
 {
     LDX #LO(logo_screen_data)
     LDY #HI(logo_screen_data)
-    LDA #HI(screen_base_addr)
+    LDA #HI(unpack_buffer)
     JSR PUCRUNCH_UNPACK
-
+    LDX #HI(unpack_buffer)
+    LDY #HI(screen_base_addr)
+    JSR restorepagefrompacked
+    LDX #HI(unpack_buffer+$100)
+    LDY #HI(screen_base_addr+$800)
+    JSR restorepagefrompacked
+    LDX #HI(unpack_buffer+$200)
+    LDY #HI(screen_base_addr+$1000)
+    JSR restorepagefrompacked
+    LDX #0
+    LDY #12
+    TYA
+    JSR copyandshiftlines
+    LDX #12
+    LDY #12
+    TYA
+    JSR copyandshiftlines
+    LDX #12
+    LDY #12
+    TYA
+    JSR copyandshiftlines
+    LDX #12
+    LDY #12
+    TYA
+    JSR copyandshiftlines
     LDX #0
     .loop
     STZ &2F00,X
     ;STZ &DF00,X ; if we ever end up using shadow RAM
     INX
     BNE loop
-
     SET_ULA_MODE ULA_Mode0
 	LDX #LO(logo_pal)
 	LDY #HI(logo_pal)
@@ -197,11 +310,6 @@ BLANK = 25
 	JSR crtc_reset_from_single
     SET_ULA_MODE ULA_Mode2
     JMP ula_pal_reset
-    \\ reset to 80 chars
-	LDA #1: STA &FE00
-	LDA #80: STA &FE01
-	LDA #2: STA &FE00
-	LDA #98: STA &FE01
 }
 
 .logo_set_white
@@ -535,6 +643,23 @@ smoothsize = 64
 	EQUB 0
 	NEXT
 }
+
+.mul8
+	FOR m,0,7,1
+	FOR n,0,31,1
+	EQUB (31-n)*8
+	NEXT
+	NEXT
+.linelocslo
+	FOR n,0,31,1
+	EQUB LO(&3000+n*61*8)
+	NEXT
+.linelocshi
+	FOR n,0,31,1
+	EQUB HI(&3000+n*61*8)
+	NEXT
+
+
 
 .logo_anim_table
 {

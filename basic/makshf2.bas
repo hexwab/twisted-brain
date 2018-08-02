@@ -37,6 +37,28 @@ A%?X%=B%?(X%+D%)
 NEXT
 Y%=Y%+8
 NEXT
+*L.SHIFTST
+X%=&30:Y%=&60:CALL!&2000
+X%=&38:Y%=&61:CALL!&2000
+X%=&40:Y%=&62:CALL!&2000
+REM pack and save
+*SAVE SHIFT3 6000+2E0
+X%=0
+IFGET
+Y%=12
+A%=12
+REPEAT
+CALL!&2004:REM test shifting
+X%=12
+UNTILGET=32
+CLS
+*L.SHIFT3
+REM test unpacking
+X%=&60:Y%=&30:CALL!&2002
+X%=&61:Y%=&38:CALL!&2002
+X%=&62:Y%=&40:CALL!&2002
+END
+
 Y%=96
 FOR L%=0 TO 11
 A%=&3000+(Y%DIV 8)*E%+(Y%MOD 8)
