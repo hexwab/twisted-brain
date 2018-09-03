@@ -145,7 +145,7 @@ ENDIF
 
 .music_poll_if_vsync
 {
-	PHA
+	RTS \ this gets turned into PHA later
 
 	lda #2
 	.vsync1

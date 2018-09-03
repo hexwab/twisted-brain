@@ -143,8 +143,10 @@ INCLUDE "fx/twister.h.asm"
 \ *	CODE START
 \ ******************************************************************
 
-ORG &1900	      				; code origin (like P%=&2000)
+ORG &2000	      				; code origin (like P%=&2000)
 GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
+
+main_real_start=$d00
 
 .start
 
@@ -153,8 +155,9 @@ GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
 \ ******************************************************************
 \ *	Code entry
 \ ******************************************************************
+.boot_start
 
-.main
+.boot
 {
 	\\ Clear RAM on BREAK as things are going to get messy
 	
@@ -162,39 +165,14 @@ GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
 	LDX #3
 	JSR osbyte
 
-	\\ Check emulator or real hardware and tweak accordingly
-
-	{
-		LDA &70
-		BEQ is_emulator
-
-		\\ Real hardware!
-
-		LDA #6: STA crtc_reset_from_single_hardware_SM + 1
-		BRA done
-
-		.is_emulator
-		LDA #7: STA crtc_reset_from_single_hardware_SM + 1
-
-		.done
-	}
-
 	\\ Reset stack
 
 	LDX #&FF					; X=11111111
 	TXS							; reset stack	- DON'T RESET STACK IN A SUBROUTINE!
 
-	\\ Set interrupts
-
-	SEI							; disable interupts
-	LDA #&7F					; A=01111111
-	STA &FE4E					; R14=Interrupt Enable (disable all interrupts)
-	STA &FE43					; R3=Data Direction Register "A" (set keyboard data direction)
-	LDA #&C2					; A=11000010
-	STA &FE4E					; R14=Interrupt Enable (enable main_vsync and timer interrupt)
-	CLI							; enable interupts
-
 	STZ first_fx ; initialise this before we start any decrunching
+	LDA #&60 \ opcode for RTS
+	STA music_poll_if_vsync ; this routine is loaded much later, stub it out for now
 	\\ Load SIDEWAYS RAM modules here
 
 	LDA #4:JSR swr_select_slot
@@ -226,9 +204,82 @@ GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
 	LDY #HI(hazel_filename)
 	JSR disksys_load_file
 
-	\\ NB! CAN'T USE DISC AFTER THIS AS HAZEL TRASHED!
+\\ point of no return
+	\\ Set interrupts
 
+	SEI							; disable interupts
+
+	LDX #LO(main_data)
+	LDY #HI(main_data)
+	LDA #HI(main_real_start)
+	JSR PUCRUNCH_UNPACK
+	JMP main_real
+}
+.boot_end
+	\\ NB! CAN'T USE DISC AFTER THIS AS HAZEL TRASHED!
+.lib_start
+	INCLUDE "lib/unpack.asm"
+	INCLUDE "lib/swr.asm"
+	INCLUDE "lib/disksys.asm"
+IF 0
+.music_poll_if_vsync_stub
+	pha
+	lda first_fx
+	bne doit
+	pla
+	rts
+	pla
+.doit	jmp music_poll_if_vsync
+ENDIF
+.bank0_filename EQUS "Bank0":EQUB 13
+.bank1_filename EQUS "Bank1":EQUB 13
+.bank2_filename EQUS "Bank2":EQUB 13
+.music_filename EQUS "Music":EQUB 13
+.hazel_filename EQUS "Hazel":EQUB 13
+
+.lib_end
+.main_data
+IF SAVE_FILES
+ELSE
+	INCBIN "main.pu"
+.main_data_end
+\ SAVE "Brain", start, end, start+&FFFF0000, start+&FFFF0000
+\ beebasm doesn't like 32-bit addresses; this is DFS-specific
+SAVE "Brain", boot_start, main_data_end, boot_start+&FF0000, boot_start+&FF0000
+ENDIF
+
+CLEAR boot_start, boot_end
+
+ORG	main_real_start
 	\\ Initalise system vars
+.nmi
+	RTI ; if this ever actually gets called we're gonna glitch, but at least be graceful
+.main_real
+{
+	LDA #&7F					; A=01111111
+	STA &FE4E					; R14=Interrupt Enable (disable all interrupts)
+	STA &FE43					; R3=Data Direction Register "A" (set keyboard data direction)
+	LDA #&C2					; A=11000010
+	STA &FE4E					; R14=Interrupt Enable (enable main_vsync and timer interrupt)
+	;CLI							; enable interupts
+
+	\\ Check emulator or real hardware and tweak accordingly
+
+	{
+		LDA &70
+		BEQ is_emulator
+
+		\\ Real hardware!
+
+		LDA #6
+		EQUB $2C ; BIT abs
+
+		.is_emulator
+		LDA #7
+
+		.done
+		STA crtc_reset_from_single_hardware_SM + 1
+	}
 
 	IF _DEBUG
 	LDA #0
@@ -244,6 +295,9 @@ GUARD screen_base_addr			; ensure code size doesn't hit start of screen memory
 	LDX #LO(music_data)
 	LDY #HI(music_data)
 	JSR vgm_init_stream
+
+	LDA #&48 \ opcode for PHA
+	STA music_poll_if_vsync \ enable music when decompressing
 
 	\\ Initialise script
 
@@ -591,9 +645,6 @@ ENDIF
 
 INCLUDE "lib/vgmplayer.asm"
 INCLUDE "lib/exomiser.asm"
-INCLUDE "lib/disksys.asm"
-INCLUDE "lib/unpack.asm"
-INCLUDE "lib/swr.asm"
 INCLUDE "lib/script.asm"
 
 \ ******************************************************************
@@ -601,7 +652,6 @@ INCLUDE "lib/script.asm"
 \ ******************************************************************
 
 INCLUDE "fx/helpers.asm"
-INCLUDE "fx/font.asm"
 INCLUDE "fx/sequence.asm"
 
 \ ******************************************************************
@@ -609,12 +659,6 @@ INCLUDE "fx/sequence.asm"
 \ ******************************************************************
 
 .data_start
-
-.bank0_filename EQUS "Bank0":EQUB 13
-.bank1_filename EQUS "Bank1":EQUB 13
-.bank2_filename EQUS "Bank2":EQUB 13
-.music_filename EQUS "Music":EQUB 13
-.hazel_filename EQUS "Hazel":EQUB 13
 
 .main_fx_table
 {
@@ -670,6 +714,8 @@ NEXT
 
 .data_end
 
+INCLUDE "fx/font.asm"
+
 \ ******************************************************************
 \ *	Text and strings
 \ ******************************************************************
@@ -679,23 +725,25 @@ INCLUDE "fx/text_blocks.asm"
 \ ******************************************************************
 \ *	End address to be saved
 \ ******************************************************************
+.main_real_end
 
-.end
+IF SAVE_FILES
+SAVE "Main", main_real_start, main_real_end
+ELSE
+ENDIF
 
 \ ******************************************************************
 \ *	Save the code
 \ ******************************************************************
 
-\ SAVE "Brain", start, end, start+&FFFF0000, start+&FFFF0000
-\ beebasm doesn't like 32-bit addresses; this is DFS-specific
-SAVE "Brain", start, end, start+&FF0000, start+&FF0000
 
 \ ******************************************************************
 \ *	Space reserved for runtime buffers not preinitialised
 \ ******************************************************************
 
-.picture_line_buffer
-SKIP 80
+;.picture_line_buffer
+;SKIP 80
+picture_line_buffer = $2400
 
 \ ******************************************************************
 \ *	Memory Info
@@ -921,6 +969,7 @@ PUTFILE "basic/makshif.bas.bin", "MAKSHIF", &E000
 PUTFILE "data/bsmode1.bin", "LOGO", &3000
 PUTBASIC "basic/makshf2.bas", "MAKSHF2"
 PUTBASIC "basic/twist.bas", "MTWIST"
+;PUTFILE "SHIFTST", "SHIFTST", &2000
 ;PUTFILE "data/nova-mode1.bin", "NOVA", &3000
 ;PUTFILE "data/brain-mode2.bin", "BRAIN", &3000
 ;PUTFILE "data/flash-mode2.bin", "FLASH", &3000

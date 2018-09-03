@@ -17,7 +17,7 @@ vblinds_bar_index1 = locals_start + 3
 vblinds_bar_index2 = locals_start + 4
 vblinds_scr_ptr = locals_start+5
 vblinds_buffer = locals_start+7
-
+vblinds_linear_buffer = &2F00
 .vblinds_start
 
 \ ******************************************************************
@@ -472,9 +472,9 @@ FOR n, 0, 255, 1
 EQUB 20 + 19 * SIN(2 * PI * n / 64)
 NEXT
 
-PAGE_ALIGN
-.vblinds_linear_buffer
-SKIP LINEAR_BUFFER_size
+;PAGE_ALIGN
+;.vblinds_linear_buffer
+;SKIP LINEAR_BUFFER_size
 
 VBLINDS_MAX_COLOURS=15
 
