@@ -7,7 +7,11 @@ logo_bottom_scanline = locals_start + 1
 logo_scroll = locals_start + 2
 logo_speed = locals_start + 3
 
-narrow_screen_base_addr = &3000 - 40
+BLANKLINE_ADDR = $2200
+
+
+narrow_screen_base_addr = &2400 - 39
+narrow_screen_real = &2400
 NARROW_CHARS = 61 ; 6845 chars
 
 MACRO SCREEN_ADDR_ROW_NARROW row
@@ -15,6 +19,9 @@ MACRO SCREEN_ADDR_ROW_NARROW row
 ENDMACRO
 
 MACRO SCREEN_ADDR_LO_NARROW row
+      IF LO((narrow_screen_base_addr + row*NARROW_CHARS*8) DIV 8)==LO(BLANKLINE_ADDR DIV 8)
+            ERROR "oops"
+      ENDIF
 	EQUB LO((narrow_screen_base_addr + row*NARROW_CHARS*8) DIV 8)
 ENDMACRO
 
@@ -24,11 +31,23 @@ ENDMACRO
 
 BLANK = 25
 
+MACRO BLANKLO
+      EQUB LO(BLANKLINE_ADDR DIV 8)
+      ;SCREEN_ADDR_LO_NARROW BLANK
+ENDMACRO
+
+MACRO BLANKHI 
+      EQUB HI(BLANKLINE_ADDR DIV 8)
+      ;SCREEN_ADDR_HI_NARROW BLANK
+      ;EQUB 123
+ENDMACRO
+
 .logo_start
-unpack_buffer = &E00
+unpack_buffer = &7c00
 	;; pack/unpack 8-byte-aligned bytes from 8 pages to/from 1
 	;; page. packed format is undefined
 
+IF 0 ; currently unused
 .copypagetopacked
 {
 	STX srcloc+2
@@ -49,6 +68,7 @@ unpack_buffer = &E00
 	BNE loop
 	RTS
 }
+ENDIF
 .restorepagefrompacked
 {
 	STX srcloc+2
@@ -115,22 +135,33 @@ unpack_buffer = &E00
 	BPL loop
 	RTS
 }
-PAGE_ALIGN ;FIXME: why is this needed?
+;PAGE_ALIGN ;FIXME: why is this needed?
 .logo_init
 {
+    LDA #0
+    CLC
+    .loop
+    TAX
+    STZ BLANKLINE_ADDR,X
+    STZ BLANKLINE_ADDR+$100,X
+    STZ &D200,X
+    STZ &D300,X ; if we ever end up using shadow RAM
+    ADC #8
+    BNE loop
     LDX #LO(logo_screen_data)
     LDY #HI(logo_screen_data)
     LDA #HI(unpack_buffer)
     JSR PUCRUNCH_UNPACK
     LDX #HI(unpack_buffer)
-    LDY #HI(screen_base_addr)
+    LDY #HI(narrow_screen_real)
     JSR restorepagefrompacked
     LDX #HI(unpack_buffer+$100)
-    LDY #HI(screen_base_addr+$800)
+    LDY #HI(narrow_screen_real+$800)
     JSR restorepagefrompacked
     LDX #HI(unpack_buffer+$200)
-    LDY #HI(screen_base_addr+$1000)
+    LDY #HI(narrow_screen_real+$1000)
     JSR restorepagefrompacked
+
     LDX #0
     LDY #12
     TYA
@@ -139,20 +170,25 @@ PAGE_ALIGN ;FIXME: why is this needed?
     LDY #12
     TYA
     JSR copyandshiftlines
+
     LDX #12
-    LDY #12
-    TYA
+    LDY #24
+    LDA #12
     JSR copyandshiftlines
-    LDX #12
-    LDY #12
-    TYA
+    LDX #24
+    LDY #24
+    LDA #12
     JSR copyandshiftlines
-    LDX #0
-    .loop
-    STZ &2F00,X
-    ;STZ &DF00,X ; if we ever end up using shadow RAM
-    INX
-    BNE loop
+
+    LDX #24
+    LDY #36
+    LDA #12
+    JSR copyandshiftlines
+    LDX #36
+    LDY #36
+    LDA #12
+    JSR copyandshiftlines
+
     SET_ULA_MODE ULA_Mode0
 	LDX #LO(logo_pal)
 	LDY #HI(logo_pal)
@@ -174,11 +210,10 @@ PAGE_ALIGN ;FIXME: why is this needed?
 
     RTS
 }
-
+ALIGN $100 ; FIXME
 .logo_update
 {
 	\\ Which line in the table is the bottom?
-
 	LDX logo_bottom_scanline
 	INX
 	STX logo_bottom_scanline
@@ -254,8 +289,8 @@ PAGE_ALIGN ;FIXME: why is this needed?
 	\\ Set up second charrow
 
 	LDX #1
-	INC logo_charrow		; 5c
-	JSR logo_set_charrow	; 46c
+	LDY logo_charrow	; 5c
+	JSR blankline2 ;logo_set_charrow	; 46c
 
 	\\ Cycle count to end of charrow
 
@@ -267,8 +302,9 @@ PAGE_ALIGN ;FIXME: why is this needed?
 
 	.here
 
-	INC logo_charrow		; 5c
-	JSR logo_set_white		; 46c
+;	INC logo_charrow		; 5c
+	INY
+	JSR logo_set_charrow		; 46c
 
 	\\ Cycle count to end of charrow
 
@@ -306,34 +342,82 @@ PAGE_ALIGN ;FIXME: why is this needed?
 
 .logo_kill
 {
-    \\ Will need a kill fn if in MODE 0
-	JSR crtc_reset_from_single
+\\ Will need a kill fn if in MODE 0
+    ;LDX #HI($1800)
+    ;LDY #HI($2700)
+    ;JSR restorepagefrompacked
+
+    JSR crtc_reset_from_single
     SET_ULA_MODE ULA_Mode2
     JMP ula_pal_reset
 }
 
-.logo_set_white
+.blankline2
+	LDA #13: STA &FE00				; 6c
+	LDA #LO((BLANKLINE_ADDR DIV 8))
+.blankline
 {
-	LDA logo_colour, X				; 4c
-	ORA #&80:STA &FE21				; 6c
-	ORA #&10:STA &FE21				; 6c
-	ORA #&20:STA &FE21				; 6c
-	AND #&EF:STA &FE21				; 6c
-	ORA #&40:STA &FE21				; 6c
-	ORA #&10:STA &FE21				; 6c
-	AND #&DF:STA &FE21				; 6c
-	AND #&EF:STA &FE21				; 6c
-	NOP:NOP
-}	\\ Total time = 12c + 14c + 40c = 66c
-\\ Fall through!
+	STA &FE01					; 4c
+   	LDA #12: STA &FE00				; 6c
+	LDA #HI((BLANKLINE_ADDR DIV 8))
+	STA &FE01
+
+	PHX
+	TXA:ROL A:ROL A:ROL A:AND #3:TAX ;16c
+	LDA logo_colour, X ; 4c
+	STA logo_set_white+1
+	PLX
+IF 0
+	TXA: ROL A ; 4c
+	BCS bit7set
+.bit7clear
+	BMI bit7clear_bit6set
+.bit7clear_bit6clear
+	LDA logo_colour+0
+	BRA done
+.bit7clear_bit6set
+	LDA logo_colour+1
+	BRA done
+.bit7set
+	BMI bit7set_bit6set
+.bit7set_bit6clear
+	LDA logo_colour+2
+	BRA done
+.bit7set_bit6set
+	LDA logo_colour+3
+;	BRA done
+.done
+;	ORA #&10:STA &FE21				; 6c
+;	ORA #&20:STA &FE21				; 6c
+;	AND #&EF:STA &FE21				; 6c
+;	ORA #&40:STA &FE21				; 6c
+;	ORA #&10:STA &FE21				; 6c
+;	AND #&DF:STA &FE21				; 6c
+;	AND #&EF:STA &FE21				; 6c
+;	STA logo_set_white+1
+ENDIF
+
+;	FOR n,0,20,1
+
+;FOR n,0,34,1
+FOR n,0,20,1
+
+
+;	FOR n,0,5,1
+	NOP
+	NEXT
+	RTS
+}
+
 .logo_set_charrow
 {
-	LDY logo_charrow				; 3c
-
-	CLC							; 2c
+;	LDY logo_charrow				; 3c
 
 	LDA #13: STA &FE00				; 6c
 	LDA logo_default_LO, X			; 4c
+	CMP #LO((BLANKLINE_ADDR DIV 8))
+	BEQ blankline
+	CLC							; 2c
 	ADC logo_scanline_offset_LO, Y				; 4c
 	STA &FE01						; 4c
 
@@ -342,10 +426,33 @@ PAGE_ALIGN ;FIXME: why is this needed?
 	LDA logo_default_HI, X			; 4c
 	ADC logo_scanline_offset_HI, Y				; 4c
 	STA &FE01						; 4c
-
-	RTS
+.*logo_set_accon
+	LDA #&18
+	STA &FE34
+	FOR n,0,1,1
+	NOP
+	NEXT
+;	RTS
 	\\ Total time = 12c + 6c + 14c + 14c = 46c
 }
+.logo_set_white
+{
+	LDA #$83				; 2c
+	STA &FE21				; 6c
+	ORA #&10:STA &FE21				; 6c
+	ORA #&20:STA &FE21				; 6c
+	AND #&EF:STA &FE21				; 6c
+	ORA #&40:STA &FE21				; 6c
+	ORA #&10:STA &FE21				; 6c
+	AND #&DF:STA &FE21				; 6c
+	AND #&EF:STA &FE21				; 6c
+	;NOP:NOP:NOP:NOP:NOP
+	RTS
+;	LDA #1 ; 2c
+.trb_or_tsb
+;	TRB $FE34 ; 6c
+}	\\ Total time = 12c + 14c + 40c = 66c
+\\ Fall through!
 
 .logo_set_anim
 {
@@ -396,90 +503,80 @@ INCBIN "data/shift.pu"
 PAGE_ALIGN
 .logo_colour
 {
-FOR n,0,63,1
-	EQUB PAL_red
-NEXT
-FOR n,0,63,1
-	EQUB PAL_green
-NEXT
-FOR n,0,63,1
-	EQUB PAL_yellow
-NEXT
-FOR n,0,63,1
-	EQUB PAL_blue
-NEXT
+;FOR n,0,63,1
+	EQUB $80+PAL_red
+;NEXT
+;FOR n,0,63,1
+	EQUB $80+PAL_green
+;NEXT
+;FOR n,0,63,1
+	EQUB $80+PAL_yellow
+;NEXT
+;FOR n,0,63,1
+	EQUB $80+PAL_blue
+;NEXT
 }
 
 .logo_default_LO
 {
 FOR a,0,3,1
 	FOR n,1,7,1
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	NEXT
 
 	SCREEN_ADDR_LO_NARROW 0
 	SCREEN_ADDR_LO_NARROW 0
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 0
 	SCREEN_ADDR_LO_NARROW 0
 	SCREEN_ADDR_LO_NARROW 0
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 1
 	SCREEN_ADDR_LO_NARROW 1
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 2
 	SCREEN_ADDR_LO_NARROW 2
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 3
 	SCREEN_ADDR_LO_NARROW 3
 	SCREEN_ADDR_LO_NARROW 3
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 4
 	SCREEN_ADDR_LO_NARROW 4
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 5
 	SCREEN_ADDR_LO_NARROW 5
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 6
 	SCREEN_ADDR_LO_NARROW 6
 	SCREEN_ADDR_LO_NARROW 6
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 7
 	SCREEN_ADDR_LO_NARROW 7
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 7
 	SCREEN_ADDR_LO_NARROW 7
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 8
 	SCREEN_ADDR_LO_NARROW 8
 	SCREEN_ADDR_LO_NARROW 8
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 9
 	SCREEN_ADDR_LO_NARROW 9
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 9
 	SCREEN_ADDR_LO_NARROW 9
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 10
 	SCREEN_ADDR_LO_NARROW 10
 	SCREEN_ADDR_LO_NARROW 10
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	SCREEN_ADDR_LO_NARROW 11
 	SCREEN_ADDR_LO_NARROW 11
 	SCREEN_ADDR_LO_NARROW 11
 
-IF 0
 	FOR n,1,7,1
-	SCREEN_ADDR_LO_NARROW n
-	SCREEN_ADDR_LO_NARROW n
-	IF n MOD 3 = 1
-	SCREEN_ADDR_LO_NARROW n
-	ENDIF
-	NEXT
-ENDIF
-
-	FOR n,1,7,1
-	SCREEN_ADDR_LO_NARROW BLANK
+	BLANKLO
 	NEXT
 NEXT
 }
@@ -488,72 +585,62 @@ NEXT
 {
 FOR a,0,3,1
 	FOR n,1,7,1
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	NEXT
 
 	SCREEN_ADDR_HI_NARROW 0
 	SCREEN_ADDR_HI_NARROW 0
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 0
 	SCREEN_ADDR_HI_NARROW 0
 	SCREEN_ADDR_HI_NARROW 0
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 1
 	SCREEN_ADDR_HI_NARROW 1
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 2
 	SCREEN_ADDR_HI_NARROW 2
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 3
 	SCREEN_ADDR_HI_NARROW 3
 	SCREEN_ADDR_HI_NARROW 3
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 4
 	SCREEN_ADDR_HI_NARROW 4
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 5
 	SCREEN_ADDR_HI_NARROW 5
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 6
 	SCREEN_ADDR_HI_NARROW 6
 	SCREEN_ADDR_HI_NARROW 6
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 7
 	SCREEN_ADDR_HI_NARROW 7
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 7
 	SCREEN_ADDR_HI_NARROW 7
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 8
 	SCREEN_ADDR_HI_NARROW 8
 	SCREEN_ADDR_HI_NARROW 8
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 9
 	SCREEN_ADDR_HI_NARROW 9
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 9
 	SCREEN_ADDR_HI_NARROW 9
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 10
 	SCREEN_ADDR_HI_NARROW 10
 	SCREEN_ADDR_HI_NARROW 10
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	SCREEN_ADDR_HI_NARROW 11
 	SCREEN_ADDR_HI_NARROW 11
 	SCREEN_ADDR_HI_NARROW 11
 
-IF 0
 	FOR n,1,7,1
-	SCREEN_ADDR_HI_NARROW n
-	SCREEN_ADDR_HI_NARROW n
-	IF n MOD 3 = 1
-	SCREEN_ADDR_HI_NARROW n
-	ENDIF
-	NEXT
-ENDIF
-
-	FOR n,1,7,1
-	SCREEN_ADDR_HI_NARROW BLANK
+	BLANKHI
 	NEXT
 NEXT
 }
@@ -566,6 +653,9 @@ NEXT
 }
 
 OFFSET1 = NARROW_CHARS * 12
+OFFSET2 = NARROW_CHARS * 24
+OFFSET3 = NARROW_CHARS * 36
+
 smoothsize = 64
 
 .logo_sinewave_LO
@@ -583,16 +673,32 @@ smoothsize = 64
 	ENDIF
 	x = INT(10 * SIN(4 * PI * n / 256) * smoothstep)
 	ELSE
-	x = INT(10 * SIN(4 * PI * n / 256))
+	x = INT(20 * SIN(4 * PI * n / 256))
 	ENDIF
-	IF (x AND 1) = 1
+	IF (x AND 3) = 1
 		IF x < 0
-		a = OFFSET1 - ((x-1) DIV 2)
+		a = OFFSET1 - ((x-1) DIV 4)
 		ELSE
-		a = OFFSET1 - (x DIV 2)
+		a = OFFSET1 - (x DIV 4)
 		ENDIF
 	ELSE
-	a = -(x DIV 2)
+	IF (x AND 3) = 2
+		IF x < 0
+		a = OFFSET2 - ((x-2) DIV 4)
+		ELSE
+		a = OFFSET2 - (x DIV 4)
+		ENDIF
+	ELSE
+	IF (x AND 3) = 3
+		IF x < 0
+		a = OFFSET3 - ((x-3) DIV 4)
+		ELSE
+		a = OFFSET3 - (x DIV 4)
+		ENDIF
+	ELSE
+	a = -(x DIV 4)
+	ENDIF
+	ENDIF
 	ENDIF
 	EQUB LO(a)
 	NEXT
@@ -614,9 +720,35 @@ smoothsize = 64
 	PRINT "smoothstep=",smoothstep
 	x = INT(10 * SIN(4 * PI * n / 256) * smoothstep)
 	ELSE
-	x = INT(10 * SIN(4 * PI * n / 256))
+	x = INT(20 * SIN(4 * PI * n / 256))
 	ENDIF
-	IF (x AND 1) = 1
+	IF (x AND 3) = 1
+		IF x < 0
+		a = OFFSET1 - ((x-1) DIV 4)
+		ELSE
+		a = OFFSET1 - (x DIV 4)
+		ENDIF
+	ELSE
+	IF (x AND 3) = 2
+		IF x < 0
+		a = OFFSET2 - ((x-2) DIV 4)
+		ELSE
+		a = OFFSET2 - (x DIV 4)
+		ENDIF
+	ELSE
+	IF (x AND 3) = 3
+		IF x < 0
+		a = OFFSET3 - ((x-3) DIV 4)
+		ELSE
+		a = OFFSET3 - (x DIV 4)
+		ENDIF
+	ELSE
+	a = -(x DIV 4)
+	ENDIF
+	ENDIF
+	ENDIF
+IF 0
+IF (x AND 1) = 1
 		IF x < 0
 		a = OFFSET1 - ((x-1) DIV 2)
 		ELSE
@@ -625,6 +757,7 @@ smoothsize = 64
 	ELSE
 	a = -(x DIV 2)
 	ENDIF
+ENDIF
 	PRINT "x=",x," a=",~a
 	EQUB HI(a)
 	NEXT
@@ -643,20 +776,21 @@ smoothsize = 64
 	EQUB 0
 	NEXT
 }
-
+ALIGN &100
 .mul8
 	FOR m,0,7,1
 	FOR n,0,31,1
 	EQUB (31-n)*8
 	NEXT
 	NEXT
+
 .linelocslo
-	FOR n,0,31,1
-	EQUB LO(&3000+n*61*8)
+	FOR n,0,63,1
+	EQUB LO($2400+n*61*8)
 	NEXT
 .linelocshi
-	FOR n,0,31,1
-	EQUB HI(&3000+n*61*8)
+	FOR n,0,63,1
+	EQUB HI($2400+n*61*8)
 	NEXT
 
 
