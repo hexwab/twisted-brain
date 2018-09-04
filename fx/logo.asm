@@ -144,8 +144,8 @@ ENDIF
     TAX
     STZ BLANKLINE_ADDR,X
     STZ BLANKLINE_ADDR+$100,X
-    STZ &D200,X
-    STZ &D300,X ; if we ever end up using shadow RAM
+    ;STZ &D200,X
+    ;STZ &D300,X ; if we ever end up using shadow RAM
     ADC #8
     BNE loop
     LDX #LO(logo_screen_data)
