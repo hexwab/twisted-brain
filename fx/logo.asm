@@ -362,48 +362,18 @@ ALIGN $100 ; FIXME
 	LDA #HI((BLANKLINE_ADDR DIV 8))
 	STA &FE01
 
-	PHX
-	TXA:ROL A:ROL A:ROL A:AND #3:TAX ;16c
-	LDA logo_colour, X ; 4c
+	TXA:ROL A:ROL A:ROL A:AND #3
+	EOR #$87:DEA
 	STA logo_set_white+1
-	PLX
-IF 0
-	TXA: ROL A ; 4c
-	BCS bit7set
-.bit7clear
-	BMI bit7clear_bit6set
-.bit7clear_bit6clear
-	LDA logo_colour+0
-	BRA done
-.bit7clear_bit6set
-	LDA logo_colour+1
-	BRA done
-.bit7set
-	BMI bit7set_bit6set
-.bit7set_bit6clear
-	LDA logo_colour+2
-	BRA done
-.bit7set_bit6set
-	LDA logo_colour+3
-;	BRA done
-.done
-;	ORA #&10:STA &FE21				; 6c
-;	ORA #&20:STA &FE21				; 6c
-;	AND #&EF:STA &FE21				; 6c
-;	ORA #&40:STA &FE21				; 6c
-;	ORA #&10:STA &FE21				; 6c
-;	AND #&DF:STA &FE21				; 6c
-;	AND #&EF:STA &FE21				; 6c
-;	STA logo_set_white+1
-ENDIF
 
-;	FOR n,0,20,1
-
-;FOR n,0,34,1
-FOR n,0,20,1
-
-
-;	FOR n,0,5,1
+	ORA #&10:STA &FE21				; 6c
+	ORA #&20:STA &FE21				; 6c
+	AND #&EF:STA &FE21				; 6c
+	ORA #&40:STA &FE21				; 6c
+	ORA #&10:STA &FE21				; 6c
+	AND #&DF:STA &FE21				; 6c
+	AND #&EF:STA &FE21				; 6c
+	FOR n,0,4,1
 	NOP
 	NEXT
 	RTS
@@ -501,6 +471,7 @@ ENDIF
 INCBIN "data/shift.pu"
 
 PAGE_ALIGN
+IF 0
 .logo_colour
 {
 ;FOR n,0,63,1
@@ -516,7 +487,7 @@ PAGE_ALIGN
 	EQUB $80+PAL_blue
 ;NEXT
 }
-
+ENDIF
 .logo_default_LO
 {
 FOR a,0,3,1
