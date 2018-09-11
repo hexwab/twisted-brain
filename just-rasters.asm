@@ -691,7 +691,7 @@ INCLUDE "fx/sequence.asm"
 	EQUB 6		; fx_VBlinds
 	EQUB 5		; fx_Copper
 	EQUB 6		; fx_Plasma
-	EQUB 6		; fx_Logo
+	EQUB 6+128	; fx_Logo
 	EQUB 6		; fx_Text
 	EQUB 4		; fx Picture
 	EQUB 6		; fx_Smiley
@@ -868,8 +868,6 @@ GUARD &C000
 \ ******************************************************************
 
 PAGE_ALIGN
-INCLUDE "fx/logo.asm"
-PAGE_ALIGN
 INCLUDE "fx/text.asm"
 PAGE_ALIGN
 INCLUDE "fx/smiley.asm"
@@ -877,6 +875,8 @@ PAGE_ALIGN
 INCLUDE "fx/vblinds.asm"
 PAGE_ALIGN
 INCLUDE "fx/plasma.asm"
+PAGE_ALIGN
+INCLUDE "fx/logo.asm"
 
 .bank2_end
 
