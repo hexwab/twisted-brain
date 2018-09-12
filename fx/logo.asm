@@ -188,6 +188,9 @@ unpack_buffer = &8D00 ; ANDY
 	JSR logo_do_unpack
 
 	; copy lines 6-11 to 0-5, without shifting
+	LDA #$EA ; opcode for NOP
+	; (just in case we end up looping, we should reset it)
+	STA mayberor
 	LDX #6
 	LDY #0
 	LDA #6
@@ -229,9 +232,8 @@ unpack_buffer = &8D00 ; ANDY
 	JSR copyandshiftlines
 
 	SET_ULA_MODE ULA_Mode0
-	LDX #LO(logo_pal)
-	LDY #HI(logo_pal)
-	JSR ula_set_palette
+	LDA #7
+	JSR logo_set_white+2
 
 	STZ logo_scroll
 
@@ -247,7 +249,7 @@ unpack_buffer = &8D00 ; ANDY
 	LDA #255
 	STA logo_bottom_scanline
 
-    RTS
+	RTS
 }
 
 .logo_update
@@ -379,6 +381,11 @@ unpack_buffer = &8D00 ; ANDY
 
 .logo_kill
 {
+	LDA #$87
+	JSR logo_set_white+2
+	; blank screen while we're cleaning up
+	JSR crtc_reset_from_single
+
 	; unstash Hazel
 	LDX #HI($8000)
 	LDY #HI($D200)
@@ -393,7 +400,8 @@ unpack_buffer = &8D00 ; ANDY
 	NEXT
 	LDA #$18
 	STA $FE34 ; turn shadow off
-	JSR crtc_reset_from_single
+	lda #&40
+	sta &FE4D	\ clear timer 1
 	SET_ULA_MODE ULA_Mode2
 	JMP ula_pal_reset
 }
@@ -411,18 +419,7 @@ PAGE_ALIGN
 	TXA:ROL A:ROL A:ROL A:AND #3
 	EOR #$87:DEA
 	STA logo_set_white+1
-	STA &FE21
-	ORA #&10:STA &FE21				; 6c
-	ORA #&20:STA &FE21				; 6c
-	AND #&EF:STA &FE21				; 6c
-	ORA #&40:STA &FE21				; 6c
-	ORA #&10:STA &FE21				; 6c
-	AND #&DF:STA &FE21				; 6c
-	AND #&EF:STA &FE21				; 6c
-	FOR n,0,2,1
-	NOP
-	NEXT
-	RTS
+	BRA logo_set_white
 }
 
 .logo_set_charrow
@@ -484,7 +481,7 @@ IF 0
 	RTS
 ENDIF
 }
-
+IF 0
 .logo_pal
 {
 	EQUB &00 + PAL_black
@@ -504,7 +501,7 @@ ENDIF
 	EQUB &E0 + PAL_white
 	EQUB &F0 + PAL_white
 }
-
+ENDIF
 .logo_screen_data
 INCBIN "data/shift.pu"
 
@@ -539,33 +536,33 @@ FOR a,0,3,1
 	SCREEN_ADDR_LO_NARROW 5
 	SCREEN_ADDR_LO_NARROW 5
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 0
-	SCREEN_ADDR_LO_NARROW 0
-	SCREEN_ADDR_LO_NARROW 0
+	SCREEN_ADDR_LO_NARROW $80
+	SCREEN_ADDR_LO_NARROW $80
+	SCREEN_ADDR_LO_NARROW $80
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 1
-	SCREEN_ADDR_LO_NARROW 1
+	SCREEN_ADDR_LO_NARROW $81
+	SCREEN_ADDR_LO_NARROW $81
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 1
-	SCREEN_ADDR_LO_NARROW 1
+	SCREEN_ADDR_LO_NARROW $81
+	SCREEN_ADDR_LO_NARROW $81
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 2
-	SCREEN_ADDR_LO_NARROW 2
-	SCREEN_ADDR_LO_NARROW 2
+	SCREEN_ADDR_LO_NARROW $82
+	SCREEN_ADDR_LO_NARROW $82
+	SCREEN_ADDR_LO_NARROW $82
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 3
-	SCREEN_ADDR_LO_NARROW 3
+	SCREEN_ADDR_LO_NARROW $83
+	SCREEN_ADDR_LO_NARROW $83
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 3
-	SCREEN_ADDR_LO_NARROW 3
+	SCREEN_ADDR_LO_NARROW $83
+	SCREEN_ADDR_LO_NARROW $83
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 4
-	SCREEN_ADDR_LO_NARROW 4
-	SCREEN_ADDR_LO_NARROW 4
+	SCREEN_ADDR_LO_NARROW $84
+	SCREEN_ADDR_LO_NARROW $84
+	SCREEN_ADDR_LO_NARROW $84
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 5
-	SCREEN_ADDR_LO_NARROW 5
-	SCREEN_ADDR_LO_NARROW 5
+	SCREEN_ADDR_LO_NARROW $85
+	SCREEN_ADDR_LO_NARROW $85
+	SCREEN_ADDR_LO_NARROW $85
 
 	FOR n,1,7,1
 	BLANKLO
@@ -664,7 +661,7 @@ smoothsize = 64
 	x = INT(20 * SIN(4 * PI * n / 256) * smoothstep)
 	;x = (16*n)/256
 	ELSE
-	x = INT(40 * SIN(4 * PI * n / 256))
+	x = INT(41 * SIN(4 * PI * n / 256) + 0.5)
 	ENDIF
 	
 	IF x < 0
@@ -693,7 +690,7 @@ smoothsize = 64
 	x = INT(20 * SIN(4 * PI * n / 256) * smoothstep)
 	;x = (16*n)/256
 	ELSE
-	x = INT(40 * SIN(4 * PI * n / 256))
+	x = INT(41 * SIN(4 * PI * n / 256) + 0.5)
 	ENDIF
 	IF x < 0
 		a = OFFSET1*(x AND 7) - ((x-(x AND7)) DIV 8)
