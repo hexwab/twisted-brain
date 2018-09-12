@@ -38,12 +38,14 @@ ENDMACRO
 
 MACRO BLANKHI 
       EQUB HI(BLANKLINE_ADDR DIV 8)
-      ;SCREEN_ADDR_HI_NARROW BLANK
-      ;EQUB 123
+ENDMACRO
+
+MACRO BLANKHI_S
+      EQUB HI(BLANKLINE_ADDR DIV 8)+$80
 ENDMACRO
 
 .logo_start
-unpack_buffer = &7c00
+unpack_buffer = &8D00 ; ANDY
 	;; pack/unpack 8-byte-aligned bytes from 8 pages to/from 1
 	;; page. packed format is undefined
 
@@ -68,6 +70,19 @@ unpack_buffer = &7c00
 	RTS
 }
 
+.logo_do_unpack
+{
+	LDX #HI(unpack_buffer)
+	LDY #HI(narrow_screen_real)
+	JSR restorepagefrompacked
+	LDX #HI(unpack_buffer+$100)
+	LDY #HI(narrow_screen_real+$800)
+	JSR restorepagefrompacked
+	LDX #HI(unpack_buffer+$200)
+	LDY #HI(narrow_screen_real+$1000)
+	; fall-through
+}
+
 .restorepagefrompacked
 {
 	STX srcloc+2
@@ -86,8 +101,9 @@ unpack_buffer = &7c00
 	INC dstloc+2
 	TYA
 	BNE loop
-	RTS
+	JMP music_poll_if_vsync
 }
+
 .copyandshiftlines
 {
 	;; X is src line number, Y is dst line number, A is nlines
@@ -127,7 +143,8 @@ unpack_buffer = &7c00
 	LDX mul8,Y
 .srcloc
 	LDA $FF00,X
-	ROR A
+.*mayberor
+	NOP ;ROR A
 .dstloc
 	STA $FF00,X
 	DEY
@@ -137,61 +154,81 @@ unpack_buffer = &7c00
 
 .logo_init
 {
-    LDX #HI($D200)
-    LDY #HI($8000)
-    JSR copypagetopacked
-    LDA #0
-    CLC
-    .loop
-    TAX
-    STZ BLANKLINE_ADDR,X
-    STZ BLANKLINE_ADDR+$100,X
-    STZ &D200,X
-    STZ &D300,X
-    ADC #8
-    BNE loop
-    LDX #LO(logo_screen_data)
-    LDY #HI(logo_screen_data)
-    LDA #HI(unpack_buffer)
-    JSR PUCRUNCH_UNPACK
-    LDX #HI(unpack_buffer)
-    LDY #HI(narrow_screen_real)
-    JSR restorepagefrompacked
-    LDX #HI(unpack_buffer+$100)
-    LDY #HI(narrow_screen_real+$800)
-    JSR restorepagefrompacked
-    LDX #HI(unpack_buffer+$200)
-    LDY #HI(narrow_screen_real+$1000)
-    JSR restorepagefrompacked
+	; stash Hazel
+	; this assumes music extends no later than D9FF
+	LDX #HI($D200)
+	LDY #HI($8000)
+	JSR copypagetopacked
+	LDA #$1C
+	STA $FE34
+	; stash shadow screen. brain picture was preloaded here
+	FOR i,0,9,1
+	LDX #HI($3000+i*$800)
+	LDY #HI($8100+i*$100)
+	JSR copypagetopacked
+	NEXT
+{
+	LDA #0
+	CLC
+.loop
+	TAX
+	STZ BLANKLINE_ADDR,X 	; clear the blank line
+	STZ BLANKLINE_ADDR+$100,X
+	STZ BLANKLINE_ADDR+$D000-$2000,X ; and the shadow copy
+	STZ BLANKLINE_ADDR+$100+$D000-$2000,X
+	ADC #8
+	BNE loop
+}
+	LDX #LO(logo_screen_data)
+	LDY #HI(logo_screen_data)
+	LDA #HI(unpack_buffer)
+	JSR PUCRUNCH_UNPACK
 
-    LDX #0
-    LDY #12
-    TYA
-    JSR copyandshiftlines
-    LDX #12
-    LDY #12
-    TYA
-    JSR copyandshiftlines
+	; do shadow first!
+	JSR logo_do_unpack
 
-    LDX #12
-    LDY #24
-    LDA #12
-    JSR copyandshiftlines
-    LDX #24
-    LDY #24
-    LDA #12
-    JSR copyandshiftlines
+	; copy lines 6-11 to 0-5, without shifting
+	LDX #6
+	LDY #0
+	LDA #6
+	JSR copyandshiftlines
+	LDA #$6A ; opcode for ROR A
+	STA mayberor
+	LDX #6
+	LDY #12
+	LDA #36 ; yes these overlap
+	JSR copyandshiftlines
 
-    LDX #24
-    LDY #36
-    LDA #12
-    JSR copyandshiftlines
-    LDX #36
-    LDY #36
-    LDA #12
-    JSR copyandshiftlines
+	; ACCON only maps 20K of screen memory.
+	; we need 24K. the other 4K is read from Hazel
+	; so copy 2400-2FF8 up to D400-DFF8.
+	; luckily the music hasn't got this far yet.
+	{
+	LDY #0
+	CLC
+	.loop
+	TAX
+	TAY
+	FOR i,$2400,$2F00,$100
+	LDA i,X
+	STA i+$D000-$2000,X
+	NEXT
+	TYA
+	ADC #8
+	BNE loop
+	}
 
-    SET_ULA_MODE ULA_Mode0
+	; now do the non-shadow lines
+	LDA #$18
+	STA $FE34
+	JSR logo_do_unpack
+
+	LDX #0
+	LDY #6
+	LDA #42 ; yes these overlap
+	JSR copyandshiftlines
+
+	SET_ULA_MODE ULA_Mode0
 	LDX #LO(logo_pal)
 	LDY #HI(logo_pal)
 	JSR ula_set_palette
@@ -265,9 +302,7 @@ unpack_buffer = &7c00
 	STA logo_charrow
 
 	LDX #0
-	JSR logo_set_white		; 46c
-
-    RTS
+	JMP logo_set_white		; 46c
 }
 
 .logo_draw
@@ -339,19 +374,28 @@ unpack_buffer = &7c00
 
 	\\ Don't set anything else here - will happen in update for charrow 0
 
-    RTS
+	RTS
 }
 
 .logo_kill
 {
-\\ Will need a kill fn if in MODE 0
-    LDX #HI($8000)
-    LDY #HI($D200)
-    JSR restorepagefrompacked
-
-    JSR crtc_reset_from_single
-    SET_ULA_MODE ULA_Mode2
-    JMP ula_pal_reset
+	; unstash Hazel
+	LDX #HI($8000)
+	LDY #HI($D200)
+	JSR restorepagefrompacked
+	LDA #$1C
+	STA $FE34
+	; unstash shadow screen
+	FOR i,0,9,1
+	LDX #HI($8100+i*$100)
+	LDY #HI($3000+i*$800)
+	JSR restorepagefrompacked
+	NEXT
+	LDA #$18
+	STA $FE34 ; turn shadow off
+	JSR crtc_reset_from_single
+	SET_ULA_MODE ULA_Mode2
+	JMP ula_pal_reset
 }
 PAGE_ALIGN
 .blankline2
@@ -415,13 +459,8 @@ PAGE_ALIGN
 	ORA #&10:STA &FE21				; 6c
 	AND #&DF:STA &FE21				; 6c
 	AND #&EF:STA &FE21				; 6c
-	;NOP:NOP:NOP:NOP:NOP
 	RTS
-;	LDA #1 ; 2c
-.trb_or_tsb
-;	TRB $FE34 ; 6c
 }	\\ Total time = 12c + 14c + 40c = 66c
-\\ Fall through!
 
 .logo_set_anim
 {
@@ -500,33 +539,33 @@ FOR a,0,3,1
 	SCREEN_ADDR_LO_NARROW 5
 	SCREEN_ADDR_LO_NARROW 5
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 6
-	SCREEN_ADDR_LO_NARROW 6
-	SCREEN_ADDR_LO_NARROW 6
+	SCREEN_ADDR_LO_NARROW 0
+	SCREEN_ADDR_LO_NARROW 0
+	SCREEN_ADDR_LO_NARROW 0
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 7
-	SCREEN_ADDR_LO_NARROW 7
+	SCREEN_ADDR_LO_NARROW 1
+	SCREEN_ADDR_LO_NARROW 1
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 7
-	SCREEN_ADDR_LO_NARROW 7
+	SCREEN_ADDR_LO_NARROW 1
+	SCREEN_ADDR_LO_NARROW 1
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 8
-	SCREEN_ADDR_LO_NARROW 8
-	SCREEN_ADDR_LO_NARROW 8
+	SCREEN_ADDR_LO_NARROW 2
+	SCREEN_ADDR_LO_NARROW 2
+	SCREEN_ADDR_LO_NARROW 2
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 9
-	SCREEN_ADDR_LO_NARROW 9
+	SCREEN_ADDR_LO_NARROW 3
+	SCREEN_ADDR_LO_NARROW 3
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 9
-	SCREEN_ADDR_LO_NARROW 9
+	SCREEN_ADDR_LO_NARROW 3
+	SCREEN_ADDR_LO_NARROW 3
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 10
-	SCREEN_ADDR_LO_NARROW 10
-	SCREEN_ADDR_LO_NARROW 10
+	SCREEN_ADDR_LO_NARROW 4
+	SCREEN_ADDR_LO_NARROW 4
+	SCREEN_ADDR_LO_NARROW 4
 	BLANKLO
-	SCREEN_ADDR_LO_NARROW 11
-	SCREEN_ADDR_LO_NARROW 11
-	SCREEN_ADDR_LO_NARROW 11
+	SCREEN_ADDR_LO_NARROW 5
+	SCREEN_ADDR_LO_NARROW 5
+	SCREEN_ADDR_LO_NARROW 5
 
 	FOR n,1,7,1
 	BLANKLO
@@ -563,37 +602,37 @@ FOR a,0,3,1
 	BLANKHI
 	SCREEN_ADDR_HI_NARROW 5
 	SCREEN_ADDR_HI_NARROW 5
-	BLANKHI
-	SCREEN_ADDR_HI_NARROW 6
-	SCREEN_ADDR_HI_NARROW 6
-	SCREEN_ADDR_HI_NARROW 6
-	BLANKHI
-	SCREEN_ADDR_HI_NARROW 7
-	SCREEN_ADDR_HI_NARROW 7
-	BLANKHI
-	SCREEN_ADDR_HI_NARROW 7
-	SCREEN_ADDR_HI_NARROW 7
-	BLANKHI
-	SCREEN_ADDR_HI_NARROW 8
-	SCREEN_ADDR_HI_NARROW 8
-	SCREEN_ADDR_HI_NARROW 8
-	BLANKHI
-	SCREEN_ADDR_HI_NARROW 9
-	SCREEN_ADDR_HI_NARROW 9
-	BLANKHI
-	SCREEN_ADDR_HI_NARROW 9
-	SCREEN_ADDR_HI_NARROW 9
-	BLANKHI
-	SCREEN_ADDR_HI_NARROW 10
-	SCREEN_ADDR_HI_NARROW 10
-	SCREEN_ADDR_HI_NARROW 10
-	BLANKHI
-	SCREEN_ADDR_HI_NARROW 11
-	SCREEN_ADDR_HI_NARROW 11
-	SCREEN_ADDR_HI_NARROW 11
+	BLANKHI_S
+	SCREEN_ADDR_HI_NARROW $80
+	SCREEN_ADDR_HI_NARROW $80
+	SCREEN_ADDR_HI_NARROW $80
+	BLANKHI_S
+	SCREEN_ADDR_HI_NARROW $81
+	SCREEN_ADDR_HI_NARROW $81
+	BLANKHI_S
+	SCREEN_ADDR_HI_NARROW $81
+	SCREEN_ADDR_HI_NARROW $81
+	BLANKHI_S
+	SCREEN_ADDR_HI_NARROW $82
+	SCREEN_ADDR_HI_NARROW $82
+	SCREEN_ADDR_HI_NARROW $82
+	BLANKHI_S
+	SCREEN_ADDR_HI_NARROW $83
+	SCREEN_ADDR_HI_NARROW $83
+	BLANKHI_S
+	SCREEN_ADDR_HI_NARROW $83
+	SCREEN_ADDR_HI_NARROW $83
+	BLANKHI_S
+	SCREEN_ADDR_HI_NARROW $84
+	SCREEN_ADDR_HI_NARROW $84
+	SCREEN_ADDR_HI_NARROW $84
+	BLANKHI_S
+	SCREEN_ADDR_HI_NARROW $85
+	SCREEN_ADDR_HI_NARROW $85
+	SCREEN_ADDR_HI_NARROW $85
 
 	FOR n,1,7,1
-	BLANKHI
+	BLANKHI_S
 	NEXT
 NEXT
 }
@@ -605,9 +644,7 @@ IF 0
 	NEXT
 }
 ENDIF
-OFFSET1 = NARROW_CHARS * 12
-OFFSET2 = NARROW_CHARS * 24
-OFFSET3 = NARROW_CHARS * 36
+OFFSET1 = NARROW_CHARS * 6
 
 smoothsize = 64
 
@@ -624,34 +661,16 @@ smoothsize = 64
 	       smoothstep = 1
 	   ENDIF
 	ENDIF
-	x = INT(10 * SIN(4 * PI * n / 256) * smoothstep)
+	x = INT(20 * SIN(4 * PI * n / 256) * smoothstep)
+	;x = (16*n)/256
 	ELSE
-	x = INT(20 * SIN(4 * PI * n / 256))
+	x = INT(40 * SIN(4 * PI * n / 256))
 	ENDIF
-	IF (x AND 3) = 1
-		IF x < 0
-		a = OFFSET1 - ((x-1) DIV 4)
-		ELSE
-		a = OFFSET1 - (x DIV 4)
-		ENDIF
+	
+	IF x < 0
+		a = OFFSET1*(x AND 7) - ((x-(x AND7)) DIV 8)
 	ELSE
-	IF (x AND 3) = 2
-		IF x < 0
-		a = OFFSET2 - ((x-2) DIV 4)
-		ELSE
-		a = OFFSET2 - (x DIV 4)
-		ENDIF
-	ELSE
-	IF (x AND 3) = 3
-		IF x < 0
-		a = OFFSET3 - ((x-3) DIV 4)
-		ELSE
-		a = OFFSET3 - (x DIV 4)
-		ENDIF
-	ELSE
-	a = -(x DIV 4)
-	ENDIF
-	ENDIF
+		a = OFFSET1*(x AND 7) - (x DIV 8)
 	ENDIF
 	EQUB LO(a)
 	NEXT
@@ -671,46 +690,16 @@ smoothsize = 64
 	   ENDIF
 	ENDIF
 	PRINT "smoothstep=",smoothstep
-	x = INT(10 * SIN(4 * PI * n / 256) * smoothstep)
+	x = INT(20 * SIN(4 * PI * n / 256) * smoothstep)
+	;x = (16*n)/256
 	ELSE
-	x = INT(20 * SIN(4 * PI * n / 256))
+	x = INT(40 * SIN(4 * PI * n / 256))
 	ENDIF
-	IF (x AND 3) = 1
-		IF x < 0
-		a = OFFSET1 - ((x-1) DIV 4)
-		ELSE
-		a = OFFSET1 - (x DIV 4)
-		ENDIF
+	IF x < 0
+		a = OFFSET1*(x AND 7) - ((x-(x AND7)) DIV 8)
 	ELSE
-	IF (x AND 3) = 2
-		IF x < 0
-		a = OFFSET2 - ((x-2) DIV 4)
-		ELSE
-		a = OFFSET2 - (x DIV 4)
-		ENDIF
-	ELSE
-	IF (x AND 3) = 3
-		IF x < 0
-		a = OFFSET3 - ((x-3) DIV 4)
-		ELSE
-		a = OFFSET3 - (x DIV 4)
-		ENDIF
-	ELSE
-	a = -(x DIV 4)
+		a = OFFSET1*(x AND 7) - (x DIV 8)
 	ENDIF
-	ENDIF
-	ENDIF
-IF 0
-IF (x AND 1) = 1
-		IF x < 0
-		a = OFFSET1 - ((x-1) DIV 2)
-		ELSE
-		a = OFFSET1 - (x DIV 2)
-		ENDIF
-	ELSE
-	a = -(x DIV 2)
-	ENDIF
-ENDIF
 	PRINT "x=",x," a=",~a
 	EQUB HI(a)
 	NEXT
@@ -738,11 +727,11 @@ ALIGN &100
 	NEXT
 
 .linelocslo
-	FOR n,0,63,1
+	FOR n,0,47,1
 	EQUB LO($2400+n*61*8)
 	NEXT
 .linelocshi
-	FOR n,0,63,1
+	FOR n,0,47,1
 	EQUB HI($2400+n*61*8)
 	NEXT
 
