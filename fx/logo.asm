@@ -411,7 +411,7 @@ PAGE_ALIGN
 	TXA:ROL A:ROL A:ROL A:AND #3
 	EOR #$87:DEA
 	STA logo_set_white+1
-
+	STA &FE21
 	ORA #&10:STA &FE21				; 6c
 	ORA #&20:STA &FE21				; 6c
 	AND #&EF:STA &FE21				; 6c
@@ -419,7 +419,7 @@ PAGE_ALIGN
 	ORA #&10:STA &FE21				; 6c
 	AND #&DF:STA &FE21				; 6c
 	AND #&EF:STA &FE21				; 6c
-	FOR n,0,4,1
+	FOR n,0,2,1
 	NOP
 	NEXT
 	RTS
