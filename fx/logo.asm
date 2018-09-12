@@ -15,18 +15,18 @@ narrow_screen_real = &2400
 NARROW_CHARS = 61 ; 6845 chars
 
 MACRO SCREEN_ADDR_ROW_NARROW row
-	EQUW ((narrow_screen_base_addr + row*NARROW_CHARS*8) DIV 8)
+	EQUW ((narrow_screen_base_addr + (row AND127)*NARROW_CHARS*8) DIV 8)
 ENDMACRO
 
 MACRO SCREEN_ADDR_LO_NARROW row
-      IF LO((narrow_screen_base_addr + row*NARROW_CHARS*8) DIV 8)==LO(BLANKLINE_ADDR DIV 8)
+      IF LO((narrow_screen_base_addr + (row AND127)*NARROW_CHARS*8) DIV 8)==LO(BLANKLINE_ADDR DIV 8)
             ERROR "oops"
       ENDIF
-	EQUB LO((narrow_screen_base_addr + row*NARROW_CHARS*8) DIV 8)
+	EQUB LO((narrow_screen_base_addr + (row AND127)*NARROW_CHARS*8) DIV 8)
 ENDMACRO
 
 MACRO SCREEN_ADDR_HI_NARROW row
-	EQUB HI((narrow_screen_base_addr + row*NARROW_CHARS*8) DIV 8)
+	EQUB HI((narrow_screen_base_addr + (row AND127)*NARROW_CHARS*8) DIV 8)+(row AND 128)
 ENDMACRO
 
 BLANK = 25
@@ -47,7 +47,6 @@ unpack_buffer = &7c00
 	;; pack/unpack 8-byte-aligned bytes from 8 pages to/from 1
 	;; page. packed format is undefined
 
-IF 0 ; currently unused
 .copypagetopacked
 {
 	STX srcloc+2
@@ -68,7 +67,7 @@ IF 0 ; currently unused
 	BNE loop
 	RTS
 }
-ENDIF
+
 .restorepagefrompacked
 {
 	STX srcloc+2
@@ -135,17 +134,20 @@ ENDIF
 	BPL loop
 	RTS
 }
-;PAGE_ALIGN ;FIXME: why is this needed?
+
 .logo_init
 {
+    LDX #HI($D200)
+    LDY #HI($8000)
+    JSR copypagetopacked
     LDA #0
     CLC
     .loop
     TAX
     STZ BLANKLINE_ADDR,X
     STZ BLANKLINE_ADDR+$100,X
-    ;STZ &D200,X
-    ;STZ &D300,X ; if we ever end up using shadow RAM
+    STZ &D200,X
+    STZ &D300,X
     ADC #8
     BNE loop
     LDX #LO(logo_screen_data)
@@ -210,7 +212,7 @@ ENDIF
 
     RTS
 }
-ALIGN $100 ; FIXME
+
 .logo_update
 {
 	\\ Which line in the table is the bottom?
@@ -343,15 +345,15 @@ ALIGN $100 ; FIXME
 .logo_kill
 {
 \\ Will need a kill fn if in MODE 0
-    ;LDX #HI($1800)
-    ;LDY #HI($2700)
-    ;JSR restorepagefrompacked
+    LDX #HI($8000)
+    LDY #HI($D200)
+    JSR restorepagefrompacked
 
     JSR crtc_reset_from_single
     SET_ULA_MODE ULA_Mode2
     JMP ula_pal_reset
 }
-
+PAGE_ALIGN
 .blankline2
 	LDA #13: STA &FE00				; 6c
 	LDA #LO((BLANKLINE_ADDR DIV 8))
@@ -386,7 +388,7 @@ ALIGN $100 ; FIXME
 	LDA #13: STA &FE00				; 6c
 	LDA logo_default_LO, X			; 4c
 	CMP #LO((BLANKLINE_ADDR DIV 8))
-	BEQ blankline
+	BEQ blankline ; must be in the same page!
 	CLC							; 2c
 	ADC logo_scanline_offset_LO, Y				; 4c
 	STA &FE01						; 4c
@@ -396,13 +398,10 @@ ALIGN $100 ; FIXME
 	LDA logo_default_HI, X			; 4c
 	ADC logo_scanline_offset_HI, Y				; 4c
 	STA &FE01						; 4c
-.*logo_set_accon
-	LDA #&18
+	; we take advantage of the fact that R12 is only 6 bits wide
+	; to store the shadow bank in bit 7 of the high byte
+	ROL A: LDA #&0C: ROL A
 	STA &FE34
-	FOR n,0,1,1
-	NOP
-	NEXT
-;	RTS
 	\\ Total time = 12c + 6c + 14c + 14c = 46c
 }
 .logo_set_white
@@ -471,23 +470,6 @@ ENDIF
 INCBIN "data/shift.pu"
 
 PAGE_ALIGN
-IF 0
-.logo_colour
-{
-;FOR n,0,63,1
-	EQUB $80+PAL_red
-;NEXT
-;FOR n,0,63,1
-	EQUB $80+PAL_green
-;NEXT
-;FOR n,0,63,1
-	EQUB $80+PAL_yellow
-;NEXT
-;FOR n,0,63,1
-	EQUB $80+PAL_blue
-;NEXT
-}
-ENDIF
 .logo_default_LO
 {
 FOR a,0,3,1
@@ -615,14 +597,14 @@ FOR a,0,3,1
 	NEXT
 NEXT
 }
-
+IF 0
 .logo_offset_none
 {
 	FOR n,0,255,1
 	EQUB 0
 	NEXT
 }
-
+ENDIF
 OFFSET1 = NARROW_CHARS * 12
 OFFSET2 = NARROW_CHARS * 24
 OFFSET3 = NARROW_CHARS * 36
@@ -765,7 +747,7 @@ ALIGN &100
 	NEXT
 
 
-
+IF 0
 .logo_anim_table
 {
 	EQUW logo_offset_none, logo_offset_none
@@ -775,5 +757,5 @@ ALIGN &100
 	\\ flip
 	\\ etc.
 }
-
+ENDIF
 .logo_end
