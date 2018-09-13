@@ -58,10 +58,10 @@ INCBIN "data/brain-mask.pu"
     LDY #HI(picture_pu_data)
     LDA #HI(screen_base_addr+&D00)
     JSR PUCRUNCH_UNPACK
-    JSR music_poll_if_vsync
     LDX #0
     LDA #&C0
 .c0loop
+    JSR music_poll_if_vsync
     STA &3000,X:STA &3100,X:STA &3200,X
     STA &3300,X:STA &3400,X:STA &3500,X
     STA &3600,X:STA &3700,X:STA &3800,X
