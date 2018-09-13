@@ -9,6 +9,9 @@ logo_speed = locals_start + 3
 
 BLANKLINE_ADDR = $2200
 
+logo_scanline_offset_LO = $8E00
+logo_scanline_offset_HI = $8F00
+
 
 narrow_screen_base_addr = &2400 - 39
 narrow_screen_real = &2400
@@ -48,28 +51,6 @@ ENDMACRO
 unpack_buffer = &8D00 ; ANDY
 	;; pack/unpack 8-byte-aligned bytes from 8 pages to/from 1
 	;; page. packed format is undefined
-
-.copypagetopacked
-{
-	STX srcloc+2
-	STY dstloc+2
-	LDY #0
-.loop
-	LDX mul8,Y
-.srcloc
-	LDA $FF00,X
-.dstloc
-	STA $FF00,Y
-	INY
-	TXA
-	BNE loop
-.zero
-	INC srcloc+2
-	TYA
-	BNE loop
-	RTS
-}
-
 .logo_do_unpack
 {
 	LDX #HI(unpack_buffer)
@@ -230,7 +211,16 @@ unpack_buffer = &8D00 ; ANDY
 	LDY #6
 	LDA #42 ; yes these overlap
 	JSR copyandshiftlines
-
+	; initialize the scanline buffers
+	{
+	LDX #0
+	.loop
+	STZ logo_scanline_offset_LO, X
+	STZ logo_scanline_offset_HI, X
+	INX
+	BNE loop
+	}
+	
 	SET_ULA_MODE ULA_Mode0
 	LDA #7
 	JSR logo_set_white+2
@@ -379,32 +369,9 @@ unpack_buffer = &8D00 ; ANDY
 	RTS
 }
 
-.logo_kill
-{
-	LDA #$87
-	JSR logo_set_white+2
-	; blank screen while we're cleaning up
-	JSR crtc_reset_from_single
+.logo_screen_data
+INCBIN "data/shift.pu"
 
-	; unstash Hazel
-	LDX #HI($8000)
-	LDY #HI($D200)
-	JSR restorepagefrompacked
-	LDA #$1C
-	STA $FE34
-	; unstash shadow screen
-	FOR i,0,9,1
-	LDX #HI($8100+i*$100)
-	LDY #HI($3000+i*$800)
-	JSR restorepagefrompacked
-	NEXT
-	LDA #$18
-	STA $FE34 ; turn shadow off
-	lda #&40
-	sta &FE4D	\ clear timer 1
-	SET_ULA_MODE ULA_Mode2
-	JMP ula_pal_reset
-}
 PAGE_ALIGN
 .blankline2
 	LDA #13: STA &FE00				; 6c
@@ -502,8 +469,55 @@ IF 0
 	EQUB &F0 + PAL_white
 }
 ENDIF
-.logo_screen_data
-INCBIN "data/shift.pu"
+
+
+.logo_kill
+{
+	LDA #$87
+	JSR logo_set_white+2
+	; blank screen while we're cleaning up
+	JSR crtc_reset_from_single
+
+	; unstash Hazel
+	LDX #HI($8000)
+	LDY #HI($D200)
+	JSR restorepagefrompacked
+	LDA #$1C
+	STA $FE34
+	; unstash shadow screen
+	FOR i,0,9,1
+	LDX #HI($8100+i*$100)
+	LDY #HI($3000+i*$800)
+	JSR restorepagefrompacked
+	NEXT
+	LDA #$18
+	STA $FE34 ; turn shadow off
+	lda #&40
+	sta &FE4D	\ clear timer 1
+	SET_ULA_MODE ULA_Mode2
+	JMP ula_pal_reset
+}
+
+.copypagetopacked
+{
+	STX srcloc+2
+	STY dstloc+2
+	LDY #0
+.loop
+	LDX mul8,Y
+.srcloc
+	LDA $FF00,X
+.dstloc
+	STA $FF00,Y
+	INY
+	TXA
+	BNE loop
+.zero
+	INC srcloc+2
+	TYA
+	BNE loop
+	RTS
+}
 
 PAGE_ALIGN
 .logo_default_LO
@@ -702,19 +716,6 @@ smoothsize = 64
 	NEXT
 }
 
-.logo_scanline_offset_LO
-{
-	FOR n,0,255,1
-	EQUB 0
-	NEXT
-}
-
-.logo_scanline_offset_HI
-{
-	FOR n,0,255,1
-	EQUB 0
-	NEXT
-}
 ALIGN &100
 .mul8
 	FOR m,0,7,1
